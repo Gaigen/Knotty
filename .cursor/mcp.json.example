@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "task-board": {
+      "command": "bun",
+      "args": ["./mcp-server/src/index.ts"],
+      "env": {
+        "TASKBOARD_API_URL": "http://localhost:3000",
+        "TASKBOARD_API_TOKEN": "<paste API token here>",
+        "MCP_TOOL_PREFIX": "tb",
+        "MCP_SERVER_NAME": "task-board"
+      }
+    }
+  }
+}

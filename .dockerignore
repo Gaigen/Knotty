@@ -1,0 +1,25 @@
+# Не тащим в build-контекст (и в образ) лишнее
+node_modules
+.next
+.git
+db
+data
+download
+skills
+examples
+mini-services
+tests
+tool-results
+.zscripts
+*.log
+*.tar.gz
+tsconfig.tsbuildinfo
+.env
+.env.local
+worklog.md
+dev.log
+server.log
+.DS_Store
+*.png
+scripts/docker-sim-test.sh
+scripts/make-archive.sh

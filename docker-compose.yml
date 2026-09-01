@@ -1,0 +1,31 @@
+# Knotty — таск-трекер в Docker.
+#
+# Запуск:      docker compose up -d --build
+# Приложение:  http://<хост>:3000  (первый вход — форма создания администратора)
+# Остановка:   docker compose down            (данные останутся в volume)
+# Обновление:  заменить исходники → docker compose up -d --build
+#
+# Все данные (SQLite-база, вложения, секрет сессий) — в volume verfi-data (/data).
+# Имя volume сохранено для апгрейда с Verfi без переноса данных.
+services:
+  knotty:
+    build: .
+    container_name: knotty
+    restart: unless-stopped
+    ports:
+      - "3000:3000"            # слева — порт на хосте; меняй при занятом порте
+    environment:
+      # Необязательные переменные. По умолчанию всё настроено из коробки:
+      # AUTH_SECRET — если пуст, генерируется автоматически и хранится в /data/auth_secret.
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      # PORT: 3000             # порт внутри контейнера (обычно не нужен)
+      # TZ: Europe/Moscow      # часовой пояс контейнера
+    volumes:
+      - verfi-data:/data       # БД (custom.db), вложения (uploads/), auth_secret
+
+    # Хочется держать данные в папке хоста вместо volume? Замени volumes на:
+    #   - ./data:/data
+    # и дай права: sudo chown -R 1000:1000 ./data
+
+volumes:
+  verfi-data:
