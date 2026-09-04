@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { nextGraphPositions } from '@/lib/server/graph-positions'
 import { ApiError } from '@/lib/server/validation'
 
@@ -55,6 +56,7 @@ export async function POST(req: Request, { params }: Params) {
       )
     )
 
+    publishProjectChange(projectId)
     return Response.json({ created: created.length, ids: created.map((n) => n.id) }, { status: 201 })
   } catch (e) {
     return jsonError(e)

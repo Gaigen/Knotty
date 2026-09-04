@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 import { deleteStored } from '@/lib/server/storage'
 
@@ -24,6 +25,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (Object.keys(data).length === 0) return Response.json({ ok: true })
     const updated = await db.graphNode.update({ where: { id }, data })
+    publishProjectChange(node.projectId)
     return Response.json({ ok: true, node: { id: updated.id, x: updated.x, y: updated.y, text: updated.text } })
   } catch (e) {
     return jsonError(e)
@@ -52,6 +54,7 @@ export async function DELETE(_req: Request, { params }: Params) {
         if (attachment.previewKey) await deleteStored(attachment.previewKey)
       }
     }
+    publishProjectChange(node.projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import type { ProjectDetailDto } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
@@ -97,6 +98,7 @@ export async function PATCH(req: Request, { params }: Params) {
         await db.favorite.deleteMany({ where: { userId: user.id, projectId: id } })
       }
     }
+    publishProjectChange(id)
     return Response.json(await buildDetail(id, user.id))
   } catch (e) {
     return jsonError(e)

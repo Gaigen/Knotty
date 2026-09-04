@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 import type { GraphDto, GraphNodeDto, Priority, TaskType } from '@/lib/types'
 
@@ -130,6 +131,7 @@ export async function PATCH(req: Request, { params }: Params) {
         })
       )
     )
+    publishProjectChange(projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NO_STATUS_LABEL } from '@/lib/config'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 import { generateKeyBetween } from 'fractional-indexing'
 
@@ -49,6 +50,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (Object.keys(data).length === 0) return Response.json({ ok: true })
     await db.status.update({ where: { id }, data })
     await db.project.update({ where: { id: status.projectId }, data: { updatedAt: new Date() } })
+    publishProjectChange(status.projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)
@@ -168,6 +170,7 @@ export async function DELETE(req: Request, { params }: Params) {
     })
     await db.$transaction(rest.map((s, i) => db.status.update({ where: { id: s.id }, data: { order: i } })))
     await db.project.update({ where: { id: status.projectId }, data: { updatedAt: new Date() } })
+    publishProjectChange(status.projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

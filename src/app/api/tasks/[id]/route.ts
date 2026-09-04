@@ -4,6 +4,7 @@ import type { LinkType, TaskFullDto, TaskType } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { ApiError, assertParentAllowed, assertTypeChangeAllowed } from '@/lib/server/validation'
 import { logActivity, resolveActivityFieldValues } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { getTaskRows, safeParseArray } from '@/lib/server/serializers'
 import { generateKeyBetween } from 'fractional-indexing'
 
@@ -340,6 +341,8 @@ export async function PATCH(req: Request, { params }: Params) {
       await logActivity(id, user.id, 'status_changed', { old: oldStatus?.name, new: newStatus?.name })
     }
 
+    publishProjectChange(task.projectId, { taskId: id })
+
     return Response.json(await buildFull(id))
   } catch (e) {
     return jsonError(e)
@@ -371,6 +374,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     }
     await db.graphNode.deleteMany({ where: { id: { in: nodeIds.length ? nodeIds : ['__none__'] } } })
     await db.project.update({ where: { id: task.projectId }, data: { updatedAt: new Date() } }).catch(() => {})
+    publishProjectChange(task.projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

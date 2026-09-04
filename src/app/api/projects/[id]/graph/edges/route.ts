@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
@@ -42,6 +43,7 @@ export async function POST(req: Request, { params }: Params) {
     if (dup) throw new ApiError('Эти ноды уже связаны')
 
     const edge = await db.graphEdge.create({ data: { projectId, fromNodeId, toNodeId } })
+    publishProjectChange(projectId)
     return Response.json({ id: edge.id }, { status: 201 })
   } catch (e) {
     return jsonError(e)

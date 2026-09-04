@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
@@ -50,6 +51,7 @@ export async function POST(req: Request, { params }: Params) {
         text: refType === 'note' ? body.text ?? '' : null,
       },
     })
+    publishProjectChange(projectId)
     return Response.json(
       { id: node.id, refType: node.refType, refId: node.refId, x: node.x, y: node.y, text: node.text, w: node.w, h: node.h },
       { status: 201 }

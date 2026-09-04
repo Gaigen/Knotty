@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { ApiError } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import {
   deleteStored,
   readStored,
@@ -133,6 +134,8 @@ export async function DELETE(_req: Request, { params }: Params) {
         fileName: attachment.fileName,
         attachmentId: attachment.id,
       })
+    } else {
+      publishProjectChange(attachment.projectId)
     }
     await db.graphNode.deleteMany({ where: { refType: 'attachment', refId: id } })
     await db.attachment.delete({ where: { id } })

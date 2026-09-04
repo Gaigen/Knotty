@@ -15,6 +15,7 @@ import { useProject, useUsers, copyToClipboard, useUpdateProject } from '@/lib/a
 import { cn } from '@/lib/utils'
 import { rememberLastProject, projectTaskUrl, type ProjectTab } from '@/lib/nav'
 import { prefKey, prefSet } from '@/lib/prefs'
+import { useProjectRealtime } from '@/lib/realtime'
 import { isEditableTarget } from '@/lib/keyboard'
 import { TasksView } from '@/components/tasks/tasks-view'
 import { BoardView } from '@/components/board/board-view'
@@ -42,6 +43,7 @@ export function ProjectView({
   const router = useRouter()
   const { data: project, isLoading, error } = useProject(projectId)
   const { data: users = [] } = useUsers()
+  useProjectRealtime(projectId)
   const favMut = useUpdateProject()
 
   const [tab, setTab] = useState<ProjectTab>(initialTab)

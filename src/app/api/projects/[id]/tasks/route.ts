@@ -3,6 +3,7 @@ import { ALLOWED_CHILDREN, PRIORITIES, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { ApiError, ancestorChain } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { nextGraphPositions } from '@/lib/server/graph-positions'
 import { getTaskRows } from '@/lib/server/serializers'
 import { generateKeyBetween } from 'fractional-indexing'
@@ -118,8 +119,6 @@ export async function POST(req: Request, { params }: Params) {
       })
     })
 
-    await logActivity(created.id, user.id, 'created', { type, title })
-
     // автодобавление на канвас графа: галочка в модалке создания (переопределяет
     // авто-режим проекта), быстрые пути без галочки следуют авто-режиму
     if (body.addToGraph ?? project.autoGraph) {
@@ -128,6 +127,9 @@ export async function POST(req: Request, { params }: Params) {
         data: { projectId, refType: 'task', refId: created.id, x: pos.x, y: pos.y },
       })
     }
+
+    await logActivity(created.id, user.id, 'created', { type, title })
+    publishProjectChange(projectId, { taskId: created.id })
 
     const rows = await getTaskRows(projectId)
     const row = rows.find((r) => r.id === created.id)

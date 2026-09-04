@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
@@ -40,6 +41,7 @@ export async function POST(req: Request, { params }: Params) {
       data: { projectId, name, color, category, order: maxOrder + 1 },
     })
     await db.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } })
+    publishProjectChange(projectId)
     return Response.json({ id: status.id }, { status: 201 })
   } catch (e) {
     return jsonError(e)
@@ -67,6 +69,7 @@ export async function PATCH(req: Request, { params }: Params) {
       )
     )
     await db.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } })
+    publishProjectChange(projectId)
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

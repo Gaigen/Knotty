@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 import { storeFile } from '@/lib/server/storage'
 import type { AttachmentDto } from '@/lib/types'
@@ -45,6 +46,7 @@ export async function POST(req: Request, { params }: Params) {
         createdAt: attachment.createdAt.toISOString(),
       })
     }
+    publishProjectChange(projectId)
     return Response.json(created, { status: 201 })
   } catch (e) {
     return jsonError(e)
