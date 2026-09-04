@@ -360,7 +360,7 @@ export function TaskPanelFull({
 
         {/* Правая колонка — sidebar свойств */}
         {!loading && task && (
-          <aside className="custom-scroll min-w-0 shrink-0 overflow-x-hidden overflow-y-auto border-t bg-muted/30 p-4 lg:w-[300px] lg:max-w-[300px] lg:border-l lg:border-t-0">
+          <aside className="custom-scroll relative z-10 min-w-0 shrink-0 overflow-x-hidden overflow-y-auto border-t bg-muted/30 p-4 lg:w-[300px] lg:max-w-[300px] lg:border-l lg:border-t-0">
             <PropertySidebar
               task={task}
               users={users}
