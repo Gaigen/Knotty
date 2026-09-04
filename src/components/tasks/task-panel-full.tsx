@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TaskPanelTabLabel, TASK_PANEL_TAB_TRIGGER_CLASS } from '@/components/tasks/task-panel-tab-label'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -332,19 +333,17 @@ export function TaskPanelFull({
               <div className="border-t px-3 py-3 sm:px-4">
                 <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
                   <div className="rounded-lg bg-muted p-1">
-                    <TabsList className="grid h-auto w-full grid-cols-4 gap-1 bg-transparent p-0">
-                      {[
-                        ['comments', `Комментарии${task.comments.length ? ` · ${task.comments.length}` : ''}`],
-                        ['attachments', `Вложения${task.attachments.length ? ` · ${task.attachments.length}` : ''}`],
-                        ['links', `Связи${task.links.length ? ` · ${task.links.length}` : ''}`],
-                        ['history', 'История'],
-                      ].map(([v, label]) => (
-                        <TabsTrigger
-                          key={v}
-                          value={v}
-                          className="h-8 w-full rounded-md px-1.5 text-xs font-medium text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-background dark:data-[state=active]:border-transparent sm:px-2.5"
-                        >
-                          {label}
+                    <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 bg-transparent p-0">
+                      {(
+                        [
+                          ['comments', task.comments.length],
+                          ['attachments', task.attachments.length],
+                          ['links', task.links.length],
+                          ['history', undefined],
+                        ] as const
+                      ).map(([v, count]) => (
+                        <TabsTrigger key={v} value={v} className={cn(TASK_PANEL_TAB_TRIGGER_CLASS, 'sm:px-2')}>
+                          <TaskPanelTabLabel id={v} count={count || undefined} />
                         </TabsTrigger>
                       ))}
                     </TabsList>

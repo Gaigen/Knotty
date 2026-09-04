@@ -45,6 +45,7 @@ import { KnottyEdge, type KnottyEdgeData } from '@/components/graph/graph-edges'
 import { GraphOffCanvasPanel, GRAPH_TASK_DRAG_TYPE } from '@/components/graph/graph-off-canvas-panel'
 import { GraphFilterCheck, GraphToolbarBtn } from '@/components/graph/graph-toolbar-bits'
 import { GraphEdgeLegend } from '@/components/graph/graph-edge-legend'
+import { GraphCanvasHints } from '@/components/graph/graph-canvas-hints'
 import { isEditableTarget } from '@/lib/keyboard'
 import type { ProjectDetailDto, UserDto } from '@/lib/types'
 
@@ -1248,20 +1249,8 @@ function GraphCanvas({
         </Panel>
 
         {/* Панель действий над выделением + подсказка по управлению (слева, не перекрывает «Не на канвасе») */}
-        <Panel position="bottom-left" className="!mb-3 !ml-3 flex max-w-[min(calc(100vw-2rem),42rem)] flex-col items-start gap-2">
-          <div className="hidden items-center gap-3 rounded-full border bg-background/90 px-3 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur md:flex">
-            <span>протяните рамку по фону — выделение</span>
-            <span aria-hidden>·</span>
-            <span>СКМ или Space+драг — панорама</span>
-            <span aria-hidden>·</span>
-            <span>Ctrl+клик — добавить к выделению</span>
-            <span aria-hidden>·</span>
-            <span>наведите на связь — <span className="font-medium">×</span> удалит</span>
-            <span aria-hidden>·</span>
-            <span>ПКМ — меню</span>
-            <span aria-hidden>·</span>
-            <span><span className="font-medium">/</span> — найти</span>
-          </div>
+        <Panel position="bottom-left" className="!mb-3 !ml-3 flex max-w-[min(calc(100vw-2rem),36rem)] flex-col items-start gap-2">
+          <GraphCanvasHints />
           {selectedCount > 1 && (
             <div className="flex items-center gap-1.5 rounded-xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur">
               <span className="px-1 text-xs font-medium text-muted-foreground">
