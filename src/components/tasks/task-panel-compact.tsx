@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  Check, ChevronsUpDown, Copy, CopyPlus,
-  ExternalLink, Link2, ListTree, Maximize2, MoreHorizontal, Plus, Trash2, X,
+  Check, Copy, CopyPlus,
+  ExternalLink, ListTree, Maximize2, MoreHorizontal, Plus, Trash2, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,10 +17,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { MarkdownEditor, MarkdownView } from '@/components/shared/markdown'
 import { LabelChip, PriorityIcon, TypeIcon, UserAvatar } from '@/components/shared/bits'
+import { ParentTaskPicker } from '@/components/tasks/parent-task-picker'
 import { PanelComments } from '@/components/tasks/panel-comments'
 import { PanelAttachments } from '@/components/tasks/panel-attachments'
 import { PanelLinks } from '@/components/tasks/panel-links'
@@ -425,7 +424,6 @@ function PanelDetailsCompact({
   const [editingDesc, setEditingDesc] = useState(false)
   const [labelInput, setLabelInput] = useState('')
   const [subtaskTitle, setSubtaskTitle] = useState('')
-  const [parentOpen, setParentOpen] = useState(false)
 
   const [prevTaskId, setPrevTaskId] = useState(task.id)
   if (task.id !== prevTaskId) {
@@ -563,7 +561,7 @@ function PanelDetailsCompact({
       </section>
 
       {/* Срок + Родитель */}
-      <section aria-label="Поля задачи" className="grid grid-cols-[100px_1fr] items-center gap-y-3 text-sm">
+      <section aria-label="Поля задачи" className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-y-3 text-sm">
         <span className="text-muted-foreground">Срок</span>
         <DueDateField
           dueDate={task.dueDate}
@@ -573,60 +571,7 @@ function PanelDetailsCompact({
         />
 
         <span className="text-muted-foreground">Родитель</span>
-        <Popover open={parentOpen} onOpenChange={setParentOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" role="combobox" className="h-8 w-full justify-between font-normal text-sm">
-              {task.parent ? (
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <TypeIcon type={task.parent.type} className="h-3.5 w-3.5" />
-                  <span className="font-mono text-xs text-muted-foreground">{task.parent.key}</span>
-                  <span className="truncate">{task.parent.title}</span>
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Нет родителя</span>
-              )}
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[min(400px,calc(100vw-2rem))] p-0" align="start" collisionPadding={16}>
-            <Command>
-              <CommandInput placeholder="Поиск задачи-родителя…" />
-              <CommandList>
-                <CommandEmpty>Нет подходящих задач</CommandEmpty>
-                <CommandGroup>
-                  <CommandItem value="no-parent" onSelect={() => { onPatch({ parentId: null }).catch(() => {}); setParentOpen(false) }}>
-                    <Check className={cn('h-4 w-4', !task.parent && 'opacity-100', task.parent && 'opacity-0')} />
-                    Без родителя
-                  </CommandItem>
-                  {parentCandidates.map((t) => (
-                    <CommandItem
-                      key={t.id}
-                      value={`${t.key} ${t.title}`}
-                      onSelect={() => { onPatch({ parentId: t.id }).catch(() => {}); setParentOpen(false) }}
-                    >
-                      <Check className={cn('h-4 w-4', task.parent?.id === t.id ? 'opacity-100' : 'opacity-0')} />
-                      <TypeIcon type={t.type} className="h-3.5 w-3.5" />
-                      <span className="font-mono text-xs text-muted-foreground">{t.key}</span>
-                      <span className="truncate">{t.title}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-        {task.parent && (
-          <>
-            <span />
-            <button
-              type="button"
-              className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => onPatch({ parentId: null }).catch(() => {})}
-            >
-              <Link2 className="h-3 w-3" /> Открепить от {task.parent.key}
-            </button>
-          </>
-        )}
+        <ParentTaskPicker task={task} parentCandidates={parentCandidates} onPatch={onPatch} />
       </section>
 
       {/* Метки */}

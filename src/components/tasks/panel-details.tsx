@@ -3,12 +3,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  CalendarDays, Check, ChevronsUpDown, Link2, ListTree, Plus, X,
+  CalendarDays, Check, ListTree, Plus, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { ParentTaskPicker } from '@/components/tasks/parent-task-picker'
 import { MarkdownEditor, MarkdownView } from '@/components/shared/markdown'
 import { LabelChip, TypeIcon } from '@/components/shared/bits'
 import { useCreateTask, useTasks, useUpdateTask, useUploadAttachments } from '@/lib/api'
@@ -37,7 +36,6 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
   const [editingDesc, setEditingDesc] = useState(false)
   const [labelInput, setLabelInput] = useState('')
   const [subtaskTitle, setSubtaskTitle] = useState('')
-  const [parentOpen, setParentOpen] = useState(false)
   const descRef = useRef<HTMLDivElement>(null)
 
   // сброс черновика описания при смене задачи — паттерн «правка при рендере» (без эффекта)
@@ -165,7 +163,7 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
       </section>
 
       {/* Поля: срок, родитель */}
-      <section aria-label="Поля задачи" className="grid grid-cols-[130px_1fr] items-center gap-y-3 text-sm">
+      <section aria-label="Поля задачи" className="grid grid-cols-[130px_minmax(0,1fr)] items-center gap-y-3 text-sm">
         <span className="text-muted-foreground">Срок</span>
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="relative">
@@ -210,65 +208,8 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
           )}
         </div>
 
-        {/* Родитель: поиск по задачам проекта, открепить; [v1.1] фильтр по допустимым типам */}
         <span className="text-muted-foreground">Родитель</span>
-        <Popover open={parentOpen} onOpenChange={setParentOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" role="combobox" className="h-8 w-full justify-between font-normal">
-              {task.parent ? (
-                <span className="flex min-w-0 items-center gap-1.5 text-sm">
-                  <TypeIcon type={task.parent.type} className="h-3.5 w-3.5" />
-                  <span className="font-mono text-xs text-muted-foreground">{task.parent.key}</span>
-                  <span className="truncate">{task.parent.title}</span>
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Нет родителя</span>
-              )}
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[400px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Поиск задачи-родителя…" />
-              <CommandList>
-                <CommandEmpty>Нет подходящих задач</CommandEmpty>
-                <CommandGroup>
-                  <CommandItem value="no-parent" onSelect={() => { onPatch({ parentId: null }).catch(() => {}); setParentOpen(false) }}>
-                    <Check className={cn('h-4 w-4', !task.parent && 'opacity-100', task.parent && 'opacity-0')} />
-                    Без родителя
-                  </CommandItem>
-                  {parentCandidates.map((t) => (
-                    <CommandItem
-                      key={t.id}
-                      value={`${t.key} ${t.title}`}
-                      onSelect={() => {
-                        onPatch({ parentId: t.id }).catch(() => {})
-                        setParentOpen(false)
-                      }}
-                    >
-                      <Check className={cn('h-4 w-4', task.parent?.id === t.id ? 'opacity-100' : 'opacity-0')} />
-                      <TypeIcon type={t.type} className="h-3.5 w-3.5" />
-                      <span className="font-mono text-xs text-muted-foreground">{t.key}</span>
-                      <span className="truncate">{t.title}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-        {task.parent && (
-          <>
-            <span />
-            <button
-              type="button"
-              className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => onPatch({ parentId: null }).catch(() => {})}
-            >
-              <Link2 className="h-3 w-3" /> Открепить от {task.parent.key}
-            </button>
-          </>
-        )}
+        <ParentTaskPicker task={task} parentCandidates={parentCandidates} onPatch={onPatch} />
       </section>
 
       {/* Метки (ФТ-2.7) */}

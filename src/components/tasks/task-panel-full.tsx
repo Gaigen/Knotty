@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  ArrowLeft, CalendarDays, Check, ChevronsUpDown, Copy, CopyPlus,
-  ExternalLink, Link2, ListTree, Minimize2, MoreHorizontal, Plus, Trash2, X,
+  ArrowLeft, CalendarDays, Check, Copy, CopyPlus,
+  ExternalLink, ListTree, Minimize2, MoreHorizontal, Plus, Trash2, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,10 +18,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { MarkdownEditor, MarkdownView } from '@/components/shared/markdown'
 import { LabelChip, PriorityIcon, TypeIcon, UserAvatar } from '@/components/shared/bits'
+import { ParentTaskPicker } from '@/components/tasks/parent-task-picker'
 import { PanelComments } from '@/components/tasks/panel-comments'
 import { PanelAttachments } from '@/components/tasks/panel-attachments'
 import { PanelLinks } from '@/components/tasks/panel-links'
@@ -272,9 +271,9 @@ export function TaskPanelFull({
       </header>
 
       {/* Тело редактора: левая колонка (заголовок + описание + подзадачи + вкладки) и правый sidebar свойств */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Левая колонка — основная область */}
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="custom-scroll flex-1 overflow-y-auto">
             {loading ? (
               <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
@@ -329,41 +328,39 @@ export function TaskPanelFull({
 
           {/* Вкладки под основным контентом — отдельная полоса */}
           {!loading && task && (
-            <>
-              <div className="border-t px-3 py-3 sm:px-4">
-                <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
-                  <div className="rounded-lg bg-muted p-1">
-                    <TabsList className={TASK_PANEL_TABS_LIST_CLASS}>
-                      {(
-                        [
-                          ['comments', task.comments.length],
-                          ['attachments', task.attachments.length],
-                          ['links', task.links.length],
-                          ['history', undefined],
-                        ] as const
-                      ).map(([v, count]) => (
-                        <TabsTrigger key={v} value={v} className={TASK_PANEL_TAB_TRIGGER_CLASS}>
-                          <TaskPanelTabLabel id={v} count={count || undefined} />
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </div>
+            <div className="flex min-h-0 shrink-0 flex-col border-t px-3 py-3 sm:px-4 lg:max-h-[min(46vh,28rem)]">
+              <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
+                <div className="shrink-0 rounded-lg bg-muted p-1">
+                  <TabsList className={TASK_PANEL_TABS_LIST_CLASS}>
+                    {(
+                      [
+                        ['comments', task.comments.length],
+                        ['attachments', task.attachments.length],
+                        ['links', task.links.length],
+                        ['history', undefined],
+                      ] as const
+                    ).map(([v, count]) => (
+                      <TabsTrigger key={v} value={v} className={TASK_PANEL_TAB_TRIGGER_CLASS}>
+                        <TaskPanelTabLabel id={v} count={count || undefined} />
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </div>
 
-                  <div className="custom-scroll mt-3 min-h-[280px] flex-1 overflow-y-auto lg:h-auto">
-                    {tab === 'comments' && <PanelComments task={task} onPatch={patch} />}
-                    {tab === 'attachments' && <PanelAttachments task={task} onPatch={patch} />}
-                    {tab === 'links' && <PanelLinks task={task} onOpenTask={onOpenTask} />}
-                    {tab === 'history' && <PanelHistory task={task} />}
-                  </div>
-                </Tabs>
-              </div>
-            </>
+                <div className="mt-3 min-h-0 flex-1 overflow-hidden">
+                  {tab === 'comments' && <PanelComments task={task} onPatch={patch} />}
+                  {tab === 'attachments' && <PanelAttachments task={task} onPatch={patch} />}
+                  {tab === 'links' && <PanelLinks task={task} onOpenTask={onOpenTask} />}
+                  {tab === 'history' && <PanelHistory task={task} />}
+                </div>
+              </Tabs>
+            </div>
           )}
         </div>
 
         {/* Правая колонка — sidebar свойств */}
         {!loading && task && (
-          <aside className="custom-scroll shrink-0 overflow-y-auto border-t bg-muted/30 p-4 lg:w-[300px] lg:border-l lg:border-t-0">
+          <aside className="custom-scroll min-w-0 shrink-0 overflow-x-hidden overflow-y-auto border-t bg-muted/30 p-4 lg:w-[300px] lg:max-w-[300px] lg:border-l lg:border-t-0">
             <PropertySidebar
               task={task}
               users={users}
@@ -678,10 +675,9 @@ function PropertySidebar({
     () => allTasks.filter((t) => t.id !== task.id && allowedParentTypes.includes(t.type)),
     [allTasks, task.id, allowedParentTypes]
   )
-  const [parentOpen, setParentOpen] = useState(false)
 
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <SidebarRow label="Статус">
         <Select value={task.statusId} onValueChange={(v) => onPatch({ statusId: v })}>
           <SelectTrigger className="h-8 w-full text-sm" aria-label="Сменить статус">
@@ -796,60 +792,13 @@ function PropertySidebar({
       </SidebarRow>
 
       <SidebarRow label="Родитель">
-        <Popover open={parentOpen} onOpenChange={setParentOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" role="combobox" className="h-8 w-full justify-between font-normal text-sm">
-              {task.parent ? (
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <TypeIcon type={task.parent.type} className="h-3.5 w-3.5" />
-                  <span className="font-mono text-xs text-muted-foreground">{task.parent.key}</span>
-                  <span className="truncate">{task.parent.title}</span>
-                </span>
-              ) : (
-                <span className="text-muted-foreground">Нет родителя</span>
-              )}
-              <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[300px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Поиск задачи-родителя…" />
-              <CommandList>
-                <CommandEmpty>Нет подходящих задач</CommandEmpty>
-                <CommandGroup>
-                  <CommandItem value="no-parent" onSelect={() => { onPatch({ parentId: null }).catch(() => {}); setParentOpen(false) }}>
-                    <Check className={cn('h-4 w-4', !task.parent && 'opacity-100', task.parent && 'opacity-0')} />
-                    Без родителя
-                  </CommandItem>
-                  {parentCandidates.map((t) => (
-                    <CommandItem
-                      key={t.id}
-                      value={`${t.key} ${t.title}`}
-                      onSelect={() => { onPatch({ parentId: t.id }).catch(() => {}); setParentOpen(false) }}
-                    >
-                      <Check className={cn('h-4 w-4', task.parent?.id === t.id ? 'opacity-100' : 'opacity-0')} />
-                      <TypeIcon type={t.type} className="h-3.5 w-3.5" />
-                      <span className="font-mono text-xs text-muted-foreground">{t.key}</span>
-                      <span className="truncate">{t.title}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-        {task.parent && (
-          <button
-            type="button"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => onPatch({ parentId: null }).catch(() => {})}
-          >
-            <Link2 className="h-3 w-3" /> Открепить от {task.parent.key}
-          </button>
-        )}
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Только задачи, которые могут быть родителем для типа «{TYPE_LABELS_RU[task.type]}» (п. 4.1.1 ТЗ)
-        </p>
+        <ParentTaskPicker
+          task={task}
+          parentCandidates={parentCandidates}
+          onPatch={onPatch}
+          popoverClassName="w-[300px] p-0"
+          showTypeHint
+        />
       </SidebarRow>
     </div>
   )
@@ -857,9 +806,9 @@ function PropertySidebar({
 
 function SidebarRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1 border-b py-2.5 last:border-b-0">
+    <div className="grid min-w-0 gap-1 border-b py-2.5 last:border-b-0">
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
-      <div>{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
