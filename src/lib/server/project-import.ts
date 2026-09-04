@@ -91,11 +91,20 @@ export async function importProjectFromExport(
   const numberToId = new Map<number, string>()
   let attachmentCount = 0
 
+  const assigneeIds = [...new Set((raw.tasks ?? []).map((t) => t.assigneeId).filter(Boolean))] as string[]
+  const validAssigneeIds = new Set(
+    assigneeIds.length
+      ? (await db.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true } })).map((u) => u.id)
+      : []
+  )
+
   const tasksSorted = [...(raw.tasks ?? [])].sort((a, b) => a.number - b.number)
 
   for (const t of tasksSorted) {
     const statusId = t.status ? statusByName.get(t.status) ?? defaultStatusId : defaultStatusId
     if (!statusId) throw new ApiError('Не удалось сопоставить статусы')
+
+    const assigneeId = t.assigneeId && validAssigneeIds.has(t.assigneeId) ? t.assigneeId : null
 
     const created = await db.task.create({
       data: {
@@ -105,7 +114,8 @@ export async function importProjectFromExport(
         title: t.title,
         description: t.description ?? '',
         statusId,
-        assigneeId: t.assigneeId ?? null,
+        createdById: userId,
+        assigneeId,
         priority: t.priority ?? 'mid',
         dueDate: t.dueDate ? new Date(t.dueDate) : null,
         labels: JSON.stringify(t.labels ?? []),
@@ -199,6 +209,11 @@ export async function importProjectFromExport(
     await db.graphEdge.create({
       data: { projectId: project.id, fromNodeId: fromId, toNodeId: toId },
     }).catch(() => {})
+  }
+
+  const maxTaskNumber = tasksSorted.reduce((max, t) => Math.max(max, t.number), 0)
+  if (maxTaskNumber > 0) {
+    await db.project.update({ where: { id: project.id }, data: { taskSeq: maxTaskNumber } })
   }
 
   return {

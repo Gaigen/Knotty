@@ -1065,16 +1065,16 @@ function GraphCanvas({
           />
         )}
 
-        {/* Тулбар (ФТ-3.1, ФТ-3.3) */}
-        <Panel position="top-left" className="!m-3 flex w-[min(calc(100vw-1.5rem),22rem)] flex-col gap-1.5">
-          <div className="flex w-full items-center gap-1 rounded-xl border bg-background/95 p-1 shadow-md backdrop-blur">
-            <div className="flex min-w-0 flex-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="h-8 w-full gap-1.5 justify-center px-2">
-                    <Plus className="h-4 w-4 shrink-0" /> Добавить
-                  </Button>
-                </DropdownMenuTrigger>
+        {/* Тулбар (ФТ-3.1, ФТ-3.3) — горизонтальные полоски, ширина по контенту */}
+        <Panel position="top-left" className="!m-3 flex w-max max-w-[calc(100vw-1.5rem)] flex-col gap-1.5">
+          <div className="flex flex-nowrap items-center gap-1 rounded-xl border bg-background/95 p-1 shadow-md backdrop-blur">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="h-8 shrink-0 gap-1.5 px-2.5">
+                  <Plus className="h-4 w-4 shrink-0" />
+                  Добавить
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => setAddTaskOpen(true)}>
                   <SquarePlus className="h-4 w-4" /> Новая задача
@@ -1090,12 +1090,11 @@ function GraphCanvas({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            </div>
-            <div className="flex min-w-0 flex-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 w-full gap-1.5 justify-center px-2" title="Автоматическая раскладка">
-                  <Waypoints className="h-4 w-4 shrink-0" /> Раскладка
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Автоматическая раскладка">
+                  <Waypoints className="h-4 w-4 shrink-0" />
+                  Раскладка
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -1110,12 +1109,11 @@ function GraphCanvas({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            </div>
-            <div className="flex min-w-0 flex-1">
             <Popover open={searchOpen} onOpenChange={setSearchOpen}>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 w-full gap-1.5 justify-center px-2" title="Найти ноду на канвасе (/)">
-                  <Search className="h-4 w-4 shrink-0" /> Найти
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Найти ноду на канвасе (/)">
+                  <Search className="h-4 w-4 shrink-0" />
+                  Найти
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 p-0">
@@ -1139,12 +1137,11 @@ function GraphCanvas({
                 </Command>
               </PopoverContent>
             </Popover>
-            </div>
-            <div className="flex min-w-0 flex-1">
             <Popover>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 w-full gap-1.5 justify-center px-1.5" title="Фильтры графа">
-                  <Network className="h-4 w-4 shrink-0" /> Фильтры
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Фильтры графа">
+                  <Network className="h-4 w-4 shrink-0" />
+                  Фильтры
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72">
@@ -1216,11 +1213,10 @@ function GraphCanvas({
                 </div>
               </PopoverContent>
             </Popover>
-            </div>
           </div>
 
-          <div className="rounded-xl border bg-background/95 px-2.5 py-1.5 shadow-md backdrop-blur">
-            <GraphEdgeLegend className="text-[10px] text-muted-foreground" />
+          <div className="w-max max-w-full rounded-xl border bg-background/95 px-2.5 py-1.5 shadow-md backdrop-blur">
+            <GraphEdgeLegend className="text-[10px] leading-snug text-muted-foreground" />
           </div>
         </Panel>
 
