@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { ApiError } from '@/lib/server/validation'
+import { logActivity } from '@/lib/server/activity'
 import {
   deleteStored,
   readStored,
@@ -124,9 +125,15 @@ export async function GET(req: Request, { params }: Params) {
 export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params
-    await getCurrentUser()
+    const user = await getCurrentUser()
     const attachment = await db.attachment.findUnique({ where: { id } })
     if (!attachment) throw new ApiError('Вложение не найдено', 404)
+    if (attachment.taskId) {
+      await logActivity(attachment.taskId, user.id, 'file_removed', {
+        fileName: attachment.fileName,
+        attachmentId: attachment.id,
+      })
+    }
     await db.graphNode.deleteMany({ where: { refType: 'attachment', refId: id } })
     await db.attachment.delete({ where: { id } })
     await deleteStored(attachment.storageKey)

@@ -18,6 +18,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (comment.authorId !== user.id) throw new ApiError('Можно редактировать только свои комментарии', 403)
 
     const updated = await db.comment.update({ where: { id }, data: { body: text } })
+    await logActivity(comment.taskId, user.id, 'comment_edited', { commentId: id })
     return Response.json({
       id: updated.id,
       taskId: updated.taskId,
@@ -38,6 +39,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const comment = await db.comment.findUnique({ where: { id } })
     if (!comment) throw new ApiError('Комментарий не найден', 404)
     if (comment.authorId !== user.id) throw new ApiError('Можно удалять только свои комментарии', 403)
+    await logActivity(comment.taskId, user.id, 'comment_deleted', { commentId: id })
     await db.comment.delete({ where: { id } })
     return Response.json({ ok: true })
   } catch (e) {

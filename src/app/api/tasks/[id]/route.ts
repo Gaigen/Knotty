@@ -3,7 +3,7 @@ import { PRIORITIES, TASK_TYPES } from '@/lib/config'
 import type { LinkType, TaskFullDto, TaskType } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { ApiError, assertParentAllowed, assertTypeChangeAllowed } from '@/lib/server/validation'
-import { logActivity } from '@/lib/server/activity'
+import { logActivity, resolveActivityFieldValues } from '@/lib/server/activity'
 import { getTaskRows, safeParseArray } from '@/lib/server/serializers'
 import { generateKeyBetween } from 'fractional-indexing'
 
@@ -325,11 +325,12 @@ export async function PATCH(req: Request, { params }: Params) {
 
     // --- история (ФТ-5.3) ---
     for (const ch of changes) {
+      const resolved = await resolveActivityFieldValues(ch.field, ch.old, ch.new)
       await logActivity(id, user.id, 'field_changed', {
         field: ch.field,
         fieldLabel: FIELD_LABELS[ch.field] ?? ch.field,
-        old: ch.field === 'description' ? undefined : ch.old,
-        new: ch.field === 'description' ? undefined : ch.new,
+        old: ch.field === 'description' ? undefined : resolved.old,
+        new: ch.field === 'description' ? undefined : resolved.new,
         changed: true,
       })
     }

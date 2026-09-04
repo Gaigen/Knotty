@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  ArrowLeftRight, FilePlus2, GitBranch, MessageSquare, Pencil, PlusCircle,
+  ArrowLeftRight, FileMinus2, FilePlus2, GitBranch, MessageSquare, MessageSquareOff, Pencil, PlusCircle,
 } from 'lucide-react'
 import { UserAvatar } from '@/components/shared/bits'
 import { formatDateTime } from '@/lib/format'
@@ -47,8 +47,14 @@ function describeEvent(a: ActivityDto): string {
       return `изменил(а) статус: ${fmt(p.old)} → ${fmt(p.new)}`
     case 'commented':
       return 'оставил(а) комментарий'
+    case 'comment_edited':
+      return 'изменил(а) комментарий'
+    case 'comment_deleted':
+      return 'удалил(а) комментарий'
     case 'file_added':
       return `добавил(а) файл «${fmt(p.fileName)}»`
+    case 'file_removed':
+      return `удалил(а) файл «${fmt(p.fileName)}»`
     case 'linked':
       return p.direction === 'in' ? 'добавил(а) входящую связь' : `создал(а) связь (${linkType(p.type)})${p.otherKey ? ` с ${fmt(p.otherKey)}` : ''}`
     case 'unlinked':
@@ -61,6 +67,14 @@ function describeEvent(a: ActivityDto): string {
       const newV = p.new === null || p.new === undefined ? '—' : fmt(p.new)
       if (label === 'срок') return `изменил(а) срок: ${oldV === '—' ? 'без срока' : oldV} → ${newV === '—' ? 'без срока' : newV}`
       if (label === 'исполнитель') return `сменил(а) исполнителя → ${newV === '—' ? 'не назначен' : newV}`
+      if (label === 'родитель') {
+        const from = oldV === '—' ? 'без родителя' : oldV
+        const to = newV === '—' ? 'без родителя' : newV
+        return `изменил(а) родителя: ${from} → ${to}`
+      }
+      if (label === 'название') return `переименовал(а) задачу`
+      if (label === 'приоритет') return `изменил(а) приоритет: ${oldV} → ${newV}`
+      if (label === 'тип') return `изменил(а) тип: ${oldV} → ${newV}`
       return `изменил(а) ${label}${oldV !== newV ? `: ${oldV} → ${newV}` : ''}`
     }
     default:
@@ -106,8 +120,14 @@ function EventIcon({ event }: { event: ActivityDto }) {
       return <span className={cls}><GitBranch className="h-3.5 w-3.5 text-violet-600" /></span>
     case 'commented':
       return <span className={cls}><MessageSquare className="h-3.5 w-3.5 text-sky-700" /></span>
+    case 'comment_edited':
+      return <span className={cls}><Pencil className="h-3.5 w-3.5 text-sky-600" /></span>
+    case 'comment_deleted':
+      return <span className={cls}><MessageSquareOff className="h-3.5 w-3.5 text-muted-foreground" /></span>
     case 'file_added':
       return <span className={cls}><FilePlus2 className="h-3.5 w-3.5 text-amber-600" /></span>
+    case 'file_removed':
+      return <span className={cls}><FileMinus2 className="h-3.5 w-3.5 text-amber-700" /></span>
     case 'linked':
     case 'unlinked':
       return <span className={cls}><ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" /></span>
