@@ -25,6 +25,7 @@ import { PanelComments } from '@/components/tasks/panel-comments'
 import { PanelAttachments } from '@/components/tasks/panel-attachments'
 import { PanelLinks } from '@/components/tasks/panel-links'
 import { PanelHistory } from '@/components/tasks/panel-history'
+import { PanelTabScroll } from '@/components/tasks/panel-tab-scroll'
 import {
   copyToClipboard, useCreateTask, useDeleteTask, useTask, useTasks, useUpdateTask, useUploadAttachments,
 } from '@/lib/api'
@@ -328,7 +329,7 @@ export function TaskPanelFull({
 
           {/* Вкладки под основным контентом — отдельная полоса */}
           {!loading && task && (
-            <div className="flex min-h-0 shrink-0 flex-col border-t px-3 py-3 sm:px-4 lg:max-h-[min(46vh,28rem)]">
+            <div className="flex h-[min(42vh,26rem)] min-h-[11rem] shrink-0 flex-col overflow-hidden border-t px-3 py-3 sm:px-4">
               <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
                 <div className="shrink-0 rounded-lg bg-muted p-1">
                   <TabsList className={TASK_PANEL_TABS_LIST_CLASS}>
@@ -347,11 +348,23 @@ export function TaskPanelFull({
                   </TabsList>
                 </div>
 
-                <div className="mt-3 min-h-0 flex-1 overflow-hidden">
+                <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
                   {tab === 'comments' && <PanelComments task={task} onPatch={patch} />}
-                  {tab === 'attachments' && <PanelAttachments task={task} onPatch={patch} />}
-                  {tab === 'links' && <PanelLinks task={task} onOpenTask={onOpenTask} />}
-                  {tab === 'history' && <PanelHistory task={task} />}
+                  {tab === 'attachments' && (
+                    <PanelTabScroll>
+                      <PanelAttachments task={task} onPatch={patch} />
+                    </PanelTabScroll>
+                  )}
+                  {tab === 'links' && (
+                    <PanelTabScroll>
+                      <PanelLinks task={task} onOpenTask={onOpenTask} />
+                    </PanelTabScroll>
+                  )}
+                  {tab === 'history' && (
+                    <PanelTabScroll>
+                      <PanelHistory task={task} />
+                    </PanelTabScroll>
+                  )}
                 </div>
               </Tabs>
             </div>
