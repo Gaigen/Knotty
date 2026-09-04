@@ -4,31 +4,18 @@ import { cn } from '@/lib/utils'
 
 export type TaskPanelTabId = 'details' | 'comments' | 'attachments' | 'links' | 'history'
 
-const TAB_LABELS: Record<TaskPanelTabId, { full: string; short?: string }> = {
-  details: { full: 'Детали' },
-  comments: { full: 'Комментарии', short: 'Комм.' },
-  attachments: { full: 'Вложения', short: 'Файлы' },
-  links: { full: 'Связи' },
-  history: { full: 'История' },
+const TAB_LABELS: Record<TaskPanelTabId, string> = {
+  details: 'Детали',
+  comments: 'Комментарии',
+  attachments: 'Вложения',
+  links: 'Связи',
+  history: 'История',
 }
 
-export function TaskPanelTabLabel({
-  id,
-  count,
-  variant = 'full',
-  className,
-}: {
-  id: TaskPanelTabId
-  count?: number
-  variant?: 'full' | 'compact'
-  className?: string
-}) {
-  const cfg = TAB_LABELS[id]
-  const text = variant === 'compact' && cfg.short ? cfg.short : cfg.full
-
+export function TaskPanelTabLabel({ id, count }: { id: TaskPanelTabId; count?: number }) {
   return (
-    <span className={cn('inline-flex max-w-full items-center justify-center gap-1', className)}>
-      <span className="truncate">{text}</span>
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span>{TAB_LABELS[id]}</span>
       {!!count && (
         <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[9px] font-semibold leading-none tabular-nums">
           {count}
@@ -38,5 +25,11 @@ export function TaskPanelTabLabel({
   )
 }
 
-export const TASK_PANEL_TAB_TRIGGER_CLASS =
-  'h-8 min-w-0 flex-1 overflow-hidden rounded-md px-1 text-[11px] font-medium leading-tight text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-background dark:data-[state=active]:border-transparent sm:px-1.5 sm:text-xs'
+/** Вкладки по ширине контента; при нехватке места переносятся на следующую строку */
+export const TASK_PANEL_TABS_LIST_CLASS = 'flex h-auto w-full flex-wrap gap-1 bg-transparent p-0'
+
+export const TASK_PANEL_TAB_TRIGGER_CLASS = cn(
+  'h-8 flex-none shrink-0 rounded-md px-2.5 text-xs font-medium whitespace-nowrap text-muted-foreground',
+  'data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm',
+  'dark:data-[state=active]:bg-background dark:data-[state=active]:border-transparent',
+)

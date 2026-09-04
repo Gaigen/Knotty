@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { TaskPanelTabLabel, TASK_PANEL_TAB_TRIGGER_CLASS } from '@/components/tasks/task-panel-tab-label'
+import { TaskPanelTabLabel, TASK_PANEL_TAB_TRIGGER_CLASS, TASK_PANEL_TABS_LIST_CLASS } from '@/components/tasks/task-panel-tab-label'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -333,7 +333,7 @@ export function TaskPanelFull({
               <div className="border-t px-3 py-3 sm:px-4">
                 <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-0">
                   <div className="rounded-lg bg-muted p-1">
-                    <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 bg-transparent p-0">
+                    <TabsList className={TASK_PANEL_TABS_LIST_CLASS}>
                       {(
                         [
                           ['comments', task.comments.length],
@@ -342,7 +342,7 @@ export function TaskPanelFull({
                           ['history', undefined],
                         ] as const
                       ).map(([v, count]) => (
-                        <TabsTrigger key={v} value={v} className={cn(TASK_PANEL_TAB_TRIGGER_CLASS, 'sm:px-2')}>
+                        <TabsTrigger key={v} value={v} className={TASK_PANEL_TAB_TRIGGER_CLASS}>
                           <TaskPanelTabLabel id={v} count={count || undefined} />
                         </TabsTrigger>
                       ))}
