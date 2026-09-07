@@ -90,6 +90,18 @@ export function GraphCanvasHints({ className }: { className?: string }) {
           />
           <GraphHint keys={<Kbd>ПКМ</Kbd>} label="меню" />
           <GraphHint keys={<Kbd>/</Kbd>} label="найти" />
+          <GraphHint
+            keys={
+              <>
+                <Kbd>Ctrl</Kbd>
+                <span className="text-[9px] text-muted-foreground/50">+</span>
+                <Kbd>Z</Kbd>
+              </>
+            }
+            label="отмена"
+          />
+          <GraphHint keys={<Kbd>↑↓←→</Kbd>} label="сдвиг" />
+          <GraphHint keys={<Kbd>+</Kbd>} label="зум" />
         </div>
       )}
     </div>

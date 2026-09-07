@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap, Panel,
   useNodesState, useEdgesState, useReactFlow,
-  type Connection, type Edge, type Node, type NodeMouseHandler, type NodeTypes, type OnNodeDrag, type Viewport,
+  type Connection, type Edge, type Node, type NodeMouseHandler, type NodeTypes, type OnNodeDrag, type OnNodeDragStart, type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  BoxSelect, CheckCircle2, ChevronRight, Flame, GitBranch, ListPlus, Maximize2, Map as MapIcon, Magnet, Network, Pencil, Plus, Search, SquareArrowOutUpRight, Trash2, Upload, UserCircle2, Waypoints, MonitorSmartphone, StickyNote, SquarePlus, Percent, X, ZoomIn, ZoomOut, ArrowRight, ArrowDownCircle, Eye,
+  BoxSelect, CheckCircle2, ChevronRight, Flame, GitBranch, ListPlus, Maximize2, Map as MapIcon, Magnet, Network, Pencil, Plus, Search, SquareArrowOutUpRight, Trash2, Upload, UserCircle2, Waypoints, MonitorSmartphone, StickyNote, SquarePlus, Percent, X, ZoomIn, ZoomOut, ArrowRight, ArrowDownCircle, Eye, Undo2, Redo2, Ruler,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -32,7 +32,7 @@ import { AttachmentViewer } from '@/components/shared/attachment-viewer'
 import { MarkdownView, isMarkdownCheckboxInteraction } from '@/components/shared/markdown'
 import {
   useCreateLink, useCreateGraphNode, useDeleteGraphNode, useGraph, useSaveGraphPositions, useTasks, useUpdateGraphNode, useUpdateTask,
-  useCreateGraphEdge, useDeleteGraphEdge, useBulkAddGraphTasks, useWrapGraphGroup, attachmentFileUrl,
+  useCreateGraphEdge, useDeleteGraphEdge, useDeleteLink, useBulkAddGraphTasks, useWrapGraphGroup, attachmentFileUrl,
 } from '@/lib/api'
 import { PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
 import { layoutDependencyStrip, layoutHierarchyColumn, layoutTree } from '@/lib/graph-dagre-layout'
@@ -49,6 +49,10 @@ import { GraphOffCanvasPanel, GRAPH_TASK_DRAG_TYPE } from '@/components/graph/gr
 import { GraphFilterCheck, GraphToolbarBtn } from '@/components/graph/graph-toolbar-bits'
 import { GraphEdgeLegend } from '@/components/graph/graph-edge-legend'
 import { GraphCanvasHints } from '@/components/graph/graph-canvas-hints'
+import { GraphAlignmentGuides } from '@/components/graph/graph-alignment-guides'
+import { useGraphHistory } from '@/components/graph/use-graph-history'
+import { computeAlignmentSnap, type AlignmentGuide, type GuideBox } from '@/lib/graph-guides'
+import type { GraphEdgeSnapshot, GraphNodeSnapshot, GraphPositionEntry } from '@/lib/graph-history'
 import { isEditableTarget } from '@/lib/keyboard'
 import type { ProjectDetailDto, UserDto } from '@/lib/types'
 
@@ -182,6 +186,7 @@ function GraphCanvas({
   const createLink = useCreateLink()
   const createCanvasEdge = useCreateGraphEdge()
   const deleteCanvasEdge = useDeleteGraphEdge()
+  const deleteLink = useDeleteLink()
   const wrapGroup = useWrapGraphGroup()
   const updateTask = useUpdateTask()
   const qc = useQueryClient()
@@ -226,6 +231,11 @@ function GraphCanvas({
   const [isMobile, setIsMobile] = useState(false)
   // снап-сетка: аккуратное выравнивание нод/ресайза, тогглится и запоминается
   const [snap, setSnap] = useState(true)
+  const [guidesEnabled, setGuidesEnabled] = useState(true)
+  const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([])
+  const graphHistory = useGraphHistory()
+  const dragBeforeRef = useRef<GraphPositionEntry[] | null>(null)
+  const historyRecordingRef = useRef(true)
   // контекстное меню по ПКМ: { x, y } — экран; flow — координаты канваса для создания в точке
   const [ctxMenu, setCtxMenu] = useState<{
     x: number
@@ -261,6 +271,8 @@ function GraphCanvas({
       try {
         const v = prefGet(prefKey('graphSnap'))
         if (v === '0') setSnap(false)
+        const g = prefGet(prefKey('graphGuides'))
+        if (g === '0') setGuidesEnabled(false)
         const ro = prefGet(prefKey('graphReadOnly'))
         if (ro === '1') setReadOnly(true)
       } catch {}
@@ -289,10 +301,274 @@ function GraphCanvas({
     })
   }
 
-  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users])
-  const nodeRefToId = useMemo(() => new Map((graph?.nodes ?? []).filter((n) => n.refType === 'task').map((n) => [n.id, n.refId!])), [graph])
+  function toggleGuides() {
+    setGuidesEnabled((v) => {
+      const next = !v
+      try {
+        prefSet(prefKey('graphGuides'), next ? '1' : '0')
+      } catch {}
+      if (!next) setActiveGuides([])
+      return next
+    })
+  }
 
-  // стабильная ссылка на мутацию (объект useMutation пересоздаётся каждый рендер)
+  useEffect(() => {
+    graphHistory.clear()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при смене проекта
+  }, [project.id])
+
+  const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users])
+  const nodeRefToId = useMemo(
+    () => new Map((graph?.nodes ?? []).filter((n) => n.refType === 'task').map((n) => [n.id, n.refId!])),
+    [graph]
+  )
+
+  const nodeGuideBox = useCallback((n: Node, byId: Map<string, Node>): GuideBox => {
+    let x = n.position.x
+    let y = n.position.y
+    if (n.parentId) {
+      const p = byId.get(n.parentId)
+      if (p) {
+        x += p.position.x
+        y += p.position.y
+      }
+    }
+    const w = (n.measured?.width ?? n.width ?? Number(n.style?.width) ?? 220) as number
+    const h = (n.measured?.height ?? n.height ?? Number(n.style?.height) ?? 84) as number
+    return { id: n.id, x, y, w, h }
+  }, [])
+
+  const applyPositionEntries = useCallback(
+    (entries: GraphPositionEntry[]) => {
+      const map = new Map(entries.map((e) => [e.id, e]))
+      setNodes((nds) =>
+        nds.map((n) => {
+          const p = map.get(n.id)
+          if (!p) return n
+          return {
+            ...n,
+            position: { x: p.x, y: p.y },
+            parentId: p.parentId ?? undefined,
+          }
+        })
+      )
+    },
+    [setNodes]
+  )
+
+  const persistPositions = useCallback(
+    async (entries: GraphPositionEntry[]) => {
+      await savePositions.mutateAsync({
+        projectId: project.id,
+        positions: entries.map((e) => ({
+          id: e.id,
+          x: e.x,
+          y: e.y,
+          parentId: e.parentId,
+        })),
+      })
+    },
+    [project.id, savePositions]
+  )
+
+  const pushMoveHistory = useCallback(
+    (before: GraphPositionEntry[], after: GraphPositionEntry[]) => {
+      if (!historyRecordingRef.current || readOnly) return
+      const changed = before.some((b) => {
+        const a = after.find((x) => x.id === b.id)
+        return !a || a.x !== b.x || a.y !== b.y || (a.parentId ?? null) !== (b.parentId ?? null)
+      })
+      if (!changed) return
+      graphHistory.push({
+        label: 'перемещение',
+        undo: async () => {
+          historyRecordingRef.current = false
+          applyPositionEntries(before)
+          await persistPositions(before)
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          applyPositionEntries(after)
+          await persistPositions(after)
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [applyPositionEntries, graphHistory, persistPositions, readOnly]
+  )
+
+  const snapshotGraphNode = useCallback(
+    (nodeId: string): GraphNodeSnapshot | null => {
+      const gn = graph?.nodes.find((n) => n.id === nodeId)
+      if (!gn) return null
+      return {
+        refType: gn.refType as GraphNodeSnapshot['refType'],
+        refId: gn.refId,
+        x: gn.x,
+        y: gn.y,
+        w: gn.w,
+        h: gn.h,
+        text: gn.text,
+        parentId: gn.parentId,
+      }
+    },
+    [graph]
+  )
+
+  const restoreGraphNode = useCallback(
+    async (snap: GraphNodeSnapshot) => {
+      const created = await createNode.mutateAsync({
+        projectId: project.id,
+        refType: snap.refType,
+        refId: snap.refId ?? undefined,
+        x: snap.x,
+        y: snap.y,
+        text: snap.text ?? undefined,
+        w: snap.w ?? undefined,
+        h: snap.h ?? undefined,
+      })
+      if (snap.parentId) {
+        await updateNode.mutateAsync({
+          id: created.id,
+          parentId: snap.parentId,
+          x: snap.x,
+          y: snap.y,
+        })
+      }
+      return created.id
+    },
+    [createNode, project.id, updateNode]
+  )
+
+  const pushDeleteNodesHistory = useCallback(
+    (nodeIds: string[]) => {
+      if (!historyRecordingRef.current || readOnly || nodeIds.length === 0) return
+      const snapshots = nodeIds.map((id) => snapshotGraphNode(id)).filter((s): s is GraphNodeSnapshot => !!s)
+      if (snapshots.length === 0) return
+      const deletedIds = [...nodeIds]
+      let restoredIds: string[] = []
+      graphHistory.push({
+        label: 'удаление с канваса',
+        undo: async () => {
+          historyRecordingRef.current = false
+          restoredIds = []
+          for (const snap of snapshots) {
+            restoredIds.push(await restoreGraphNode(snap))
+          }
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          for (const id of restoredIds.length ? restoredIds : deletedIds) {
+            await deleteNode.mutateAsync({ id, projectId: project.id })
+          }
+          restoredIds = []
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [deleteNode, graphHistory, project.id, readOnly, restoreGraphNode, snapshotGraphNode]
+  )
+
+  const edgeSnapshotFromEdge = useCallback((e: Edge): GraphEdgeSnapshot | null => {
+    const kind = (e.data as KnottyEdgeData | undefined)?.kind
+    if (e.id.startsWith('link-')) {
+      return {
+        edgeId: e.id,
+        kind: 'link',
+        fromNodeId: e.source,
+        toNodeId: e.target,
+        linkType: kind === 'blocks' ? 'blocks' : 'relates',
+      }
+    }
+    if (e.id.startsWith('edge-') && kind && kind !== 'tree') {
+      return {
+        edgeId: e.id,
+        kind,
+        fromNodeId: e.source,
+        toNodeId: e.target,
+      }
+    }
+    return null
+  }, [])
+
+  const deleteEdgeSnapshot = useCallback(
+    async (snap: GraphEdgeSnapshot) => {
+      const rawId = snap.edgeId.replace(/^(edge-|link-)/, '')
+      if (snap.kind === 'link') {
+        await deleteLink.mutateAsync({ id: rawId, projectId: project.id })
+      } else {
+        await deleteCanvasEdge.mutateAsync({ id: rawId, projectId: project.id })
+      }
+    },
+    [deleteCanvasEdge, deleteLink, project.id]
+  )
+
+  const recreateEdgeSnapshot = useCallback(
+    async (snap: GraphEdgeSnapshot) => {
+      if (snap.kind === 'link' && snap.linkType) {
+        const fromTask = nodeRefToId.get(snap.fromNodeId)
+        const toTask = nodeRefToId.get(snap.toNodeId)
+        if (!fromTask || !toTask) throw new Error('Задачи для связи не найдены')
+        await createLink.mutateAsync({
+          fromTaskId: fromTask,
+          toTaskId: toTask,
+          type: snap.linkType,
+          projectId: project.id,
+        })
+      } else if (snap.kind !== 'link') {
+        await createCanvasEdge.mutateAsync({
+          projectId: project.id,
+          fromNodeId: snap.fromNodeId,
+          toNodeId: snap.toNodeId,
+          kind: snap.kind,
+        })
+      }
+    },
+    [createCanvasEdge, createLink, nodeRefToId, project.id]
+  )
+
+  const pushEdgeDeleteHistory = useCallback(
+    (snap: GraphEdgeSnapshot) => {
+      if (!historyRecordingRef.current || readOnly) return
+      graphHistory.push({
+        label: 'удаление связи',
+        undo: async () => {
+          historyRecordingRef.current = false
+          await recreateEdgeSnapshot(snap)
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          await deleteEdgeSnapshot(snap)
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [deleteEdgeSnapshot, graphHistory, readOnly, recreateEdgeSnapshot]
+  )
+
+  const pushEdgeCreateHistory = useCallback(
+    (snap: GraphEdgeSnapshot) => {
+      if (!historyRecordingRef.current || readOnly) return
+      graphHistory.push({
+        label: 'создание связи',
+        undo: async () => {
+          historyRecordingRef.current = false
+          await deleteEdgeSnapshot(snap)
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          await recreateEdgeSnapshot(snap)
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [deleteEdgeSnapshot, graphHistory, readOnly, recreateEdgeSnapshot]
+  )
+
   const updateNodeRef = useRef(updateNode)
   useEffect(() => {
     updateNodeRef.current = updateNode
@@ -375,22 +651,30 @@ function GraphCanvas({
   // удаление ребра с кнопки ×: edge-* — GraphEdge, link-* — Link
   const handleDeleteEdge = useCallback(
     (edgeId: string, _kind: KnottyEdgeData['kind']) => {
+      const e = getEdges().find((x) => x.id === edgeId)
+      const snap = e ? edgeSnapshotFromEdge(e) : null
       setEdges((es) => es.filter((e) => e.id !== edgeId))
       if (edgeId.startsWith('edge-')) {
         deleteCanvasEdge.mutate(
           { id: edgeId.slice(5), projectId: project.id },
-          { onError: (e) => toast.error(e.message) }
+          {
+            onSuccess: () => {
+              if (snap) pushEdgeDeleteHistory(snap)
+            },
+            onError: (e) => toast.error(e.message),
+          }
         )
       } else if (edgeId.startsWith('link-')) {
         fetch(`/api/links/${edgeId.slice(5)}`, { method: 'DELETE' })
           .then(() => {
             qc.invalidateQueries({ queryKey: ['graph', project.id] })
             qc.invalidateQueries({ queryKey: ['projects'] })
+            if (snap) pushEdgeDeleteHistory(snap)
           })
           .catch(() => toast.error('Не удалось удалить связь'))
       }
     },
-    [deleteCanvasEdge, project.id, qc, setEdges]
+    [deleteCanvasEdge, edgeSnapshotFromEdge, getEdges, project.id, pushEdgeDeleteHistory, qc, setEdges]
   )
 
   // сохранение размеров ноды после ресайза (w/h персистятся в GraphNode)
@@ -562,19 +846,24 @@ function GraphCanvas({
       if (a.type !== 'groupRF' && b.type === 'groupRF') return 1
       return 0
     })
-    setNodes((current) =>
-      ordered.map((nn) => {
-        if (nn.type !== 'noteRF') return nn
-        // сервер не менял текст с прошлого сника → уважаем локальную правку (печать без blur)
-        if (prevServerText.get(nn.id) === newServerText.get(nn.id)) {
-          const cur = current.find((c) => c.id === nn.id)
-          if (cur && (cur.data as NoteNodeData).text !== (nn.data as NoteNodeData).text) {
-            return { ...nn, data: { ...nn.data, text: (cur.data as NoteNodeData).text } }
+    setNodes((current) => {
+      const curById = new Map(current.map((c) => [c.id, c]))
+      return ordered.map((nn) => {
+        let next = nn
+        if (nn.type === 'noteRF') {
+          // сервер не менял текст с прошлого сника → уважаем локальную правку (печать без blur)
+          if (prevServerText.get(nn.id) === newServerText.get(nn.id)) {
+            const cur = curById.get(nn.id)
+            if (cur && (cur.data as NoteNodeData).text !== (nn.data as NoteNodeData).text) {
+              next = { ...nn, data: { ...nn.data, text: (cur.data as NoteNodeData).text } }
+            }
           }
         }
-        return nn
+        const cur = curById.get(nn.id)
+        if (cur?.selected) next = { ...next, selected: true }
+        return next
       })
-    )
+    })
     serverNoteTextRef.current = newServerText
     setEdges(rfEdges)
   }, [graph, userById, setNodes, setEdges])
@@ -702,6 +991,48 @@ function GraphCanvas({
   const onNodeMouseEnter: NodeMouseHandler = useCallback((_, node) => setHoveredId(node.id), [])
   const onNodeMouseLeave: NodeMouseHandler = useCallback(() => setHoveredId(null), [])
 
+  const onNodeDragStart = useCallback<OnNodeDragStart<Node>>(
+    (_, node) => {
+      const all = getNodes()
+      const moving = all.filter((n) => n.selected)
+      const pack = moving.length > 1 ? moving : [node]
+      dragBeforeRef.current = pack.map((n) => ({
+        id: n.id,
+        x: n.position.x,
+        y: n.position.y,
+        parentId: n.parentId ?? null,
+      }))
+    },
+    [getNodes]
+  )
+
+  const onNodeDrag = useCallback<OnNodeDrag<Node>>(
+    (_, node) => {
+      if (!guidesEnabled || readOnly) {
+        setActiveGuides([])
+        return
+      }
+      const all = getNodes()
+      const byId = new Map(all.map((n) => [n.id, n]))
+      const moving = all.filter((n) => n.selected)
+      const pack = moving.length > 1 ? moving : [node]
+      const movingIds = new Set(pack.map((n) => n.id))
+      const movingBoxes = pack.map((n) => nodeGuideBox(n, byId))
+      const others = all.filter((n) => !movingIds.has(n.id)).map((n) => nodeGuideBox(n, byId))
+      const { dx, dy, guides } = computeAlignmentSnap(movingBoxes, others)
+      setActiveGuides(guides)
+      if (dx === 0 && dy === 0) return
+      setNodes((nds) =>
+        nds.map((n) =>
+          movingIds.has(n.id)
+            ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
+            : n
+        )
+      )
+    },
+    [getNodes, guidesEnabled, nodeGuideBox, readOnly, setNodes]
+  )
+
   // сохранение позиций (ФТ-3.2)
   const onNodeDragStop = useCallback<OnNodeDrag<Node>>(
     (e, node) => {
@@ -759,8 +1090,20 @@ function GraphCanvas({
         })
       )
       savePositions.mutate({ projectId: project.id, positions })
+      const before = dragBeforeRef.current
+      dragBeforeRef.current = null
+      setActiveGuides([])
+      if (before) {
+        const after: GraphPositionEntry[] = positions.map((p) => ({
+          id: p.id,
+          x: p.x,
+          y: p.y,
+          parentId: p.parentId ?? null,
+        }))
+        pushMoveHistory(before, after)
+      }
     },
-    [getNodes, screenToFlowPosition, readOnly, setNodes, savePositions, project.id]
+    [getNodes, screenToFlowPosition, readOnly, setNodes, savePositions, project.id, pushMoveHistory]
   )
 
   // создание связи хэндлами (ФТ-3.4): задача→задача — выбор типа (blocks/relates,
@@ -781,12 +1124,20 @@ function GraphCanvas({
       createCanvasEdge.mutate(
         { projectId: project.id, fromNodeId: c.source, toNodeId: c.target, kind: 'canvas' },
         {
-          onSuccess: () => toast.success('Связь нод создана'),
+          onSuccess: (res) => {
+            pushEdgeCreateHistory({
+              edgeId: `edge-${res.id}`,
+              kind: 'canvas',
+              fromNodeId: c.source,
+              toNodeId: c.target,
+            })
+            toast.success('Связь нод создана')
+          },
           onError: (e) => toast.error(e.message),
         }
       )
     },
-    [nodes, project.id, createCanvasEdge]
+    [nodes, project.id, createCanvasEdge, pushEdgeCreateHistory]
   )
 
   function submitConnect(type: 'blocks' | 'relates' | 'canvas') {
@@ -795,7 +1146,13 @@ function GraphCanvas({
       createCanvasEdge.mutate(
         { projectId: project.id, fromNodeId: connectDraft.from, toNodeId: connectDraft.to, kind: type },
         {
-          onSuccess: () => {
+          onSuccess: (res) => {
+            pushEdgeCreateHistory({
+              edgeId: `edge-${res.id}`,
+              kind: type,
+              fromNodeId: connectDraft.from,
+              toNodeId: connectDraft.to,
+            })
             toast.success(type === 'blocks' ? 'Связь «блокирует» создана' : type === 'relates' ? 'Связь «связана с» создана' : 'Связь нод создана')
             setConnectDraft(null)
           },
@@ -818,7 +1175,14 @@ function GraphCanvas({
     createLink.mutate(
       { fromTaskId, toTaskId, type, projectId: project.id },
       {
-        onSuccess: () => {
+        onSuccess: (res) => {
+          pushEdgeCreateHistory({
+            edgeId: `link-${res.id}`,
+            kind: 'link',
+            fromNodeId: connectDraft.from,
+            toNodeId: connectDraft.to,
+            linkType: type,
+          })
           toast.success(type === 'blocks' ? 'Связь «блокирует» создана' : 'Связь «связана с» создана')
           setConnectDraft(null)
         },
@@ -834,22 +1198,29 @@ function GraphCanvas({
   const onEdgesDelete = useCallback(
     (deleted: Edge[]) => {
       for (const e of deleted) {
+        const snap = edgeSnapshotFromEdge(e)
         if (e.id.startsWith('link-')) {
           fetch(`/api/links/${e.id.slice(5)}`, { method: 'DELETE' })
             .then(() => {
               qc.invalidateQueries({ queryKey: ['graph', project.id] })
               qc.invalidateQueries({ queryKey: ['projects'] })
+              if (snap) pushEdgeDeleteHistory(snap)
             })
             .catch(() => toast.error('Не удалось удалить связь'))
         } else if (e.id.startsWith('edge-')) {
           deleteCanvasEdge.mutate(
             { id: e.id.slice(5), projectId: project.id },
-            { onError: (err) => toast.error(err.message) }
+            {
+              onSuccess: () => {
+                if (snap) pushEdgeDeleteHistory(snap)
+              },
+              onError: (err) => toast.error(err.message),
+            }
           )
         }
       }
     },
-    [qc, project.id, deleteCanvasEdge]
+    [deleteCanvasEdge, edgeSnapshotFromEdge, project.id, pushEdgeDeleteHistory, qc]
   )
 
   // подтверждение удаления нод ДО фактического удаления (Delete/Backspace или тулбар)
@@ -868,13 +1239,14 @@ function GraphCanvas({
           : `${nodes.length} нод`
       const ok = confirm(`Удалить ${label} с канваса?`)
       if (ok) {
+        pushDeleteNodesHistory(nodes.map((n) => n.id))
         for (const n of nodes) {
           deleteNodeRef.current.mutate({ id: n.id, projectId: projectIdRef.current })
         }
       }
       return ok
     },
-    []
+    [pushDeleteNodesHistory]
   )
 
   // контекстное меню фона канваса: создание в точке клика (ФТ-3.3)
@@ -909,10 +1281,81 @@ function GraphCanvas({
   // счётчик выделенных нод — для панели действий и меню
   const selectedCount = useMemo(() => nodes.filter((n) => n.selected).length, [nodes])
 
-  // Esc — меню / поиск / предпросмотр; / — найти ноду (e.code — любая раскладка)
+  const nudgeSelected = useCallback(
+    (dx: number, dy: number) => {
+      if (readOnly) return
+      const selected = getNodes().filter((n) => n.selected)
+      if (selected.length === 0) return
+      const before: GraphPositionEntry[] = selected.map((n) => ({
+        id: n.id,
+        x: n.position.x,
+        y: n.position.y,
+        parentId: n.parentId ?? null,
+      }))
+      const after = before.map((p) => ({ ...p, x: p.x + dx, y: p.y + dy }))
+      applyPositionEntries(after)
+      void persistPositions(after).then(() => pushMoveHistory(before, after))
+    },
+    [applyPositionEntries, getNodes, persistPositions, pushMoveHistory, readOnly]
+  )
+
+  // Esc — меню / поиск; / — найти; craft-горячие клавиши
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
+    async function onKeyDown(e: KeyboardEvent) {
       if (isEditableTarget(e.target)) return
+      const mod = e.ctrlKey || e.metaKey
+
+      if (mod && e.code === 'KeyZ' && !e.shiftKey) {
+        e.preventDefault()
+        if (!readOnly && graphHistory.canUndo) {
+          try {
+            await graphHistory.undo()
+          } catch (err) {
+            toast.error((err as Error).message)
+          }
+        }
+        return
+      }
+      if ((mod && e.shiftKey && e.code === 'KeyZ') || (mod && e.code === 'KeyY')) {
+        e.preventDefault()
+        if (!readOnly && graphHistory.canRedo) {
+          try {
+            await graphHistory.redo()
+          } catch (err) {
+            toast.error((err as Error).message)
+          }
+        }
+        return
+      }
+      if (mod && e.code === 'KeyA') {
+        e.preventDefault()
+        setNodes((nds) => nds.map((n) => ({ ...n, selected: true })))
+        return
+      }
+      if (!mod && (e.code === 'Equal' || e.code === 'NumpadAdd')) {
+        e.preventDefault()
+        zoomIn({ duration: 200 })
+        return
+      }
+      if (!mod && (e.code === 'Minus' || e.code === 'NumpadSubtract')) {
+        e.preventDefault()
+        zoomOut({ duration: 200 })
+        return
+      }
+      if (!mod && e.code === 'Digit0') {
+        e.preventDefault()
+        fitView({ padding: 0.25, duration: 300 })
+        return
+      }
+      if (!mod && !readOnly && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+        e.preventDefault()
+        const step = e.shiftKey ? 10 : 1
+        const dx = e.code === 'ArrowLeft' ? -step : e.code === 'ArrowRight' ? step : 0
+        const dy = e.code === 'ArrowUp' ? -step : e.code === 'ArrowDown' ? step : 0
+        nudgeSelected(dx, dy)
+        return
+      }
+
       if (e.code === 'Slash') {
         e.preventDefault()
         setSearchOpen(true)
@@ -940,7 +1383,19 @@ function GraphCanvas({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [ctxMenu, searchOpen, noteDialog, fileViewer, setNodes])
+  }, [
+    ctxMenu,
+    fileViewer,
+    fitView,
+    graphHistory,
+    nudgeSelected,
+    noteDialog,
+    readOnly,
+    searchOpen,
+    setNodes,
+    zoomIn,
+    zoomOut,
+  ])
 
   useEffect(() => {
     if (!searchOpen) return
@@ -1044,6 +1499,7 @@ function GraphCanvas({
       if (selected.length === 0) return
       const ok = confirm(`Удалить выбранные ноды (${selected.length}) с канваса?`)
       if (!ok) return
+      pushDeleteNodesHistory(selected.map((n) => n.id))
       for (const n of selected) {
         deleteNodeRef.current.mutate({ id: n.id, projectId: projectIdRef.current })
       }
@@ -1233,11 +1689,14 @@ function GraphCanvas({
         }
       }}
     >
+      <GraphAlignmentGuides guides={activeGuides} />
       <ReactFlow
         nodes={displayNodes}
         edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onEdgesDelete={onEdgesDelete}
@@ -1485,6 +1944,24 @@ function GraphCanvas({
         {/* Кнопки зума/вписать/снап/миникарта (ФТ-3.1) */}
         <Panel position="top-right" className="!m-3 flex flex-col gap-1.5">
           <div className="flex overflow-hidden rounded-xl border bg-background/95 shadow-md backdrop-blur">
+            <GraphToolbarBtn
+              title="Отменить (Ctrl+Z)"
+              onClick={() => {
+                void graphHistory.undo().catch((e) => toast.error((e as Error).message))
+              }}
+              icon={<Undo2 className={cn('h-4 w-4', !graphHistory.canUndo && 'opacity-40')} />}
+              disabled={readOnly || !graphHistory.canUndo}
+            />
+            <GraphToolbarBtn
+              title="Повторить (Ctrl+Shift+Z)"
+              onClick={() => {
+                void graphHistory.redo().catch((e) => toast.error((e as Error).message))
+              }}
+              icon={<Redo2 className={cn('h-4 w-4', !graphHistory.canRedo && 'opacity-40')} />}
+              disabled={readOnly || !graphHistory.canRedo}
+            />
+          </div>
+          <div className="flex overflow-hidden rounded-xl border bg-background/95 shadow-md backdrop-blur">
             <GraphToolbarBtn title="Приблизить" onClick={() => zoomIn({ duration: 250 })} icon={<ZoomIn className="h-4 w-4" />} />
             <GraphToolbarBtn title="Масштаб 100%" onClick={() => zoomTo(1, { duration: 300 })} icon={<Percent className="h-4 w-4" />} />
             <GraphToolbarBtn title="Отдалить" onClick={() => zoomOut({ duration: 250 })} icon={<ZoomOut className="h-4 w-4" />} />
@@ -1495,6 +1972,11 @@ function GraphCanvas({
               title={snap ? 'Сетка выравнивания: вкл (перетаскивание и ресайз по шагам 10px)' : 'Сетка выравнивания: выкл'}
               onClick={toggleSnap}
               icon={<Magnet className={cn('h-4 w-4', snap && 'text-teal-700')} />}
+            />
+            <GraphToolbarBtn
+              title={guidesEnabled ? 'Направляющие: вкл' : 'Направляющие: выкл'}
+              onClick={toggleGuides}
+              icon={<Ruler className={cn('h-4 w-4', guidesEnabled && 'text-teal-700')} />}
             />
             <GraphToolbarBtn
               title={readOnly ? 'Режим просмотра: вкл (перетаскивание и связи отключены)' : 'Режим просмотра: выкл'}
@@ -1560,7 +2042,9 @@ function GraphCanvas({
                 className="h-7 gap-1.5 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   if (confirm(`Удалить выбранные ноды (${selectedCount}) с канваса?`)) {
-                    for (const n of nodes.filter((x) => x.selected)) {
+                    const selected = nodes.filter((x) => x.selected)
+                    pushDeleteNodesHistory(selected.map((n) => n.id))
+                    for (const n of selected) {
                       deleteNodeRef.current.mutate({ id: n.id, projectId: projectIdRef.current })
                     }
                   }

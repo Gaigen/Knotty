@@ -13,6 +13,7 @@ import {
 import { dropReroutedSelfLoops, hiddenByGroupCollapse, hiddenByTreeCollapse, rerouteCollapsedEdges } from './graph-collapse'
 import { zoomBand } from './semantic-zoom'
 import { collectBlockedTaskIds, findBlocksCycleOnGraph } from './graph-blocks'
+import { computeAlignmentSnap } from './graph-guides'
 
 const box = (id: string, x: number, y: number, w = 100, h = 80, parentId?: string): NodeBox => ({
   id, x, y, w, h, parentId,
@@ -129,6 +130,23 @@ describe('collapse', () => {
     const visible = dropReroutedSelfLoops(rerouted)
     expect(visible).toHaveLength(1)
     expect(visible[0]).toMatchObject({ id: 'out', source: 'g', target: 'x' })
+  })
+})
+
+describe('guides', () => {
+  test('выравнивает левый край к левому краю соседа', () => {
+    const moving = [{ id: 'a', x: 103, y: 10, w: 100, h: 50 }]
+    const others = [{ id: 'b', x: 100, y: 200, w: 80, h: 40 }]
+    const r = computeAlignmentSnap(moving, others, 5)
+    expect(r.dx).toBe(-3)
+    expect(r.dy).toBe(0)
+    expect(r.guides.some((g) => g.type === 'vertical')).toBe(true)
+  })
+
+  test('без соседей snap не применяется', () => {
+    const r = computeAlignmentSnap([{ id: 'a', x: 50, y: 50, w: 100, h: 50 }], [])
+    expect(r.dx).toBe(0)
+    expect(r.dy).toBe(0)
   })
 })
 

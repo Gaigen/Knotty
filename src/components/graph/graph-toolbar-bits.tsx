@@ -30,18 +30,21 @@ export function GraphToolbarBtn({
   title,
   onClick,
   icon,
+  disabled,
 }: {
   title: string
   onClick: () => void
   icon: ReactNode
+  disabled?: boolean
 }) {
   return (
     <button
       type="button"
       title={title}
       aria-label={title}
+      disabled={disabled}
       onClick={onClick}
-      className="flex flex-1 items-center justify-center p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="flex flex-1 items-center justify-center p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
     >
       {icon}
     </button>
