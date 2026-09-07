@@ -465,6 +465,7 @@ export function useUpdateGraphNode() {
       x?: number
       y?: number
       text?: string
+      color?: string | null
       w?: number
       h?: number
       parentId?: string | null

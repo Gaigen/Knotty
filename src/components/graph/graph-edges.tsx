@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from '@xyflow/react'
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, getStraightPath, type EdgeProps } from '@xyflow/react'
 import { X } from 'lucide-react'
 import { graphEdgeStrokeStyle, type GraphEdgeKind } from '@/lib/graph-edge-theme'
+import type { GraphEdgePathStyle } from '@/lib/graph-display-prefs'
 
 export interface KnottyEdgeData extends Record<string, unknown> {
   kind: GraphEdgeKind
+  pathStyle?: GraphEdgePathStyle
   /** подпись типа (blocks/relates), показывается при hover/выделении */
   label?: string
   onDeleteEdge?: (id: string, kind: GraphEdgeKind) => void
@@ -32,14 +34,21 @@ export function KnottyEdge({
 }: EdgeProps) {
   const d = data as KnottyEdgeData
   const [hover, setHover] = useState(false)
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const pathArgs = {
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
-  })
+  }
+  const pathStyle = d.pathStyle ?? 'bezier'
+  const [edgePath, labelX, labelY] =
+    pathStyle === 'straight'
+      ? getStraightPath(pathArgs)
+      : pathStyle === 'smoothstep'
+        ? getSmoothStepPath(pathArgs)
+        : getBezierPath(pathArgs)
 
   const active = hover || selected
   const base = graphEdgeStrokeStyle(d.kind)

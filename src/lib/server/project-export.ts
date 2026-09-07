@@ -81,6 +81,7 @@ export async function buildProjectExport(projectId: string): Promise<ProjectExpo
       w: n.w,
       h: n.h,
       text: n.text,
+      color: n.color,
       parent: n.parentId != null ? nodeIdToIndex.get(n.parentId) ?? null : null,
     })),
     graphEdges: project.graphEdges

@@ -16,6 +16,7 @@ export async function PATCH(req: Request, { params }: Params) {
       x?: number
       y?: number
       text?: string
+      color?: string | null
       w?: number
       h?: number
       parentId?: string | null
@@ -34,6 +35,12 @@ export async function PATCH(req: Request, { params }: Params) {
     if (typeof body.w === 'number') data.w = body.w
     if (typeof body.h === 'number') data.h = body.h
     if (typeof body.text === 'string') data.text = body.text.slice(0, 20000)
+    if (body.color !== undefined) {
+      if (body.color === null) data.color = null
+      else if (typeof body.color === 'string' && /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(body.color)) {
+        data.color = body.color.toLowerCase()
+      } else throw new ApiError('Некорректный цвет (ожидается #RGB или #RRGGBB)', 400)
+    }
     if (body.parentId !== undefined) data.parentId = body.parentId
 
     if (Object.keys(data).length === 0) return Response.json({ ok: true })

@@ -32,6 +32,7 @@ export type ProjectExportV1 = {
     w?: number | null
     h?: number | null
     text?: string | null
+    color?: string | null
     parent?: number | null
   }>
   /** Индексы в graphNodes (новый формат) */
@@ -200,6 +201,7 @@ export async function importProjectFromExport(
         w: gn.w ?? undefined,
         h: gn.h ?? undefined,
         text: gn.refType === 'note' || gn.refType === 'group' ? gn.text ?? (gn.refType === 'group' ? 'Пачка' : '') : null,
+        color: gn.refType === 'group' ? gn.color ?? null : null,
       },
     })
     createdByIndex[i] = node.id

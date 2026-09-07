@@ -1,5 +1,6 @@
 import { MarkerType, type EdgeMarker } from '@xyflow/react'
 import type { CSSProperties } from 'react'
+import type { GraphArrowStyle } from '@/lib/graph-display-prefs'
 
 /** Размер стрелки в px — не зависит от толщины линии (userSpaceOnUse) */
 export const GRAPH_ARROW_MARKER_PX = 7
@@ -47,9 +48,9 @@ export function graphEdgeStrokeStyle(kind: GraphEdgeKind): CSSProperties {
   }
 }
 
-function smallArrow(color: string): EdgeMarker {
+function smallArrow(color: string, arrowStyle: GraphArrowStyle): EdgeMarker {
   return {
-    type: MarkerType.ArrowClosed,
+    type: arrowStyle === 'open' ? MarkerType.Arrow : MarkerType.ArrowClosed,
     color,
     width: GRAPH_ARROW_MARKER_PX,
     height: GRAPH_ARROW_MARKER_PX,
@@ -58,7 +59,10 @@ function smallArrow(color: string): EdgeMarker {
 }
 
 /** Стрелка только на target. Визуальные связи — без стрелки. */
-export function graphEdgeMarkers(kind: GraphEdgeKind): {
+export function graphEdgeMarkers(
+  kind: GraphEdgeKind,
+  arrowStyle: GraphArrowStyle = 'closed'
+): {
   markerStart?: EdgeMarker
   markerEnd?: EdgeMarker
 } {
@@ -67,7 +71,7 @@ export function graphEdgeMarkers(kind: GraphEdgeKind): {
   }
   return {
     markerStart: undefined,
-    markerEnd: smallArrow(GRAPH_EDGE_THEME[kind].color),
+    markerEnd: smallArrow(GRAPH_EDGE_THEME[kind].color, arrowStyle),
   }
 }
 

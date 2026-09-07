@@ -10,7 +10,7 @@ import '@xyflow/react/dist/style.css'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
-  BoxSelect, CheckCircle2, ChevronRight, Flame, GitBranch, ListPlus, Maximize2, Map as MapIcon, Magnet, Network, Pencil, Plus, Search, SquareArrowOutUpRight, Trash2, Upload, UserCircle2, Waypoints, MonitorSmartphone, StickyNote, SquarePlus, Percent, X, ZoomIn, ZoomOut, ArrowRight, ArrowDownCircle, Eye, Undo2, Redo2, Ruler,
+  BoxSelect, CheckCircle2, ChevronRight, Flame, GitBranch, ListPlus, Maximize2, Map as MapIcon, Magnet, Network, Pencil, Plus, Search, SquareArrowOutUpRight, Trash2, Upload, UserCircle2, Waypoints, MonitorSmartphone, StickyNote, SquarePlus, Percent, X, ZoomIn, ZoomOut, ArrowRight, ArrowDownCircle, Eye, Undo2, Redo2, Ruler, Paintbrush,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -48,6 +48,8 @@ import { KnottyEdge, type KnottyEdgeData } from '@/components/graph/graph-edges'
 import { GraphOffCanvasPanel, GRAPH_TASK_DRAG_TYPE } from '@/components/graph/graph-off-canvas-panel'
 import { GraphFilterCheck, GraphToolbarBtn } from '@/components/graph/graph-toolbar-bits'
 import { GraphEdgeLegend } from '@/components/graph/graph-edge-legend'
+import { GraphAppearancePopover } from '@/components/graph/graph-appearance-popover'
+import { loadGraphDisplayPrefs, saveGraphDisplayPrefs, type GraphDisplayPrefs } from '@/lib/graph-display-prefs'
 import { GraphCanvasHints } from '@/components/graph/graph-canvas-hints'
 import { GraphAlignmentGuides } from '@/components/graph/graph-alignment-guides'
 import { useGraphHistory } from '@/components/graph/use-graph-history'
@@ -218,10 +220,21 @@ function GraphCanvas({
   const [readOnly, setReadOnly] = useState(false)
   const [showMinimap, setShowMinimap] = useState(true)
   const [collapsed, setCollapsed] = useState<GraphCollapsed>(() => loadCollapsed(project.id))
+  const [displayPrefs, setDisplayPrefsState] = useState<GraphDisplayPrefs>(() => loadGraphDisplayPrefs(project.id))
   const savedViewport = useMemo(() => loadViewport(project.id), [project.id])
   useEffect(() => {
     setCollapsed(loadCollapsed(project.id))
   }, [project.id])
+  useEffect(() => {
+    setDisplayPrefsState(loadGraphDisplayPrefs(project.id))
+  }, [project.id])
+  const setDisplayPrefs = useCallback(
+    (next: GraphDisplayPrefs) => {
+      setDisplayPrefsState(next)
+      saveGraphDisplayPrefs(project.id, next)
+    },
+    [project.id]
+  )
   const [connectDraft, setConnectDraft] = useState<{ from: string; to: string; mode: 'tasks' | 'mixed' } | null>(null)
   const [addTaskOpen, setAddTaskOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
@@ -857,9 +870,17 @@ function GraphCanvas({
           data: {
             title: n.text?.trim() || 'Пачка',
             childCount: childCountByGroup.get(n.id) ?? 0,
+            color: n.color,
             onResize: handleNodeResize,
             onResizeStart: handleNodeResizeStart,
             onRename: (id: string, title: string) => updateNodeRef.current.mutate({ id, text: title }),
+            onColorChange: (id: string, color: string) => {
+              markLocalGraphChange()
+              updateNodeRef.current.mutate({ id, color })
+              setNodes((nds) =>
+                nds.map((x) => (x.id === id ? { ...x, data: { ...x.data, color } } : x))
+              )
+            },
             onToggleCollapse: toggleGroupCollapse,
             onUngroup: (id: string) => {
               if (confirm('Удалить рамку? Содержимое останется на канвасе.')) {
@@ -1096,16 +1117,22 @@ function GraphCanvas({
           },
         }
       })
-    const des: Edge[] = es.map((e) => ({
-      ...e,
-      style: {
-        ...e.style,
-        opacity: related ? (e.source === hoveredId || e.target === hoveredId ? 1 : 0.15) : (e.style?.opacity ?? 1),
-      },
-      labelStyle: e.labelStyle,
-    }))
+    const des: Edge[] = es.map((e) => {
+      const kind = (e.data as KnottyEdgeData | undefined)?.kind ?? 'canvas'
+      const markers = graphEdgeMarkers(kind, displayPrefs.arrowStyle)
+      return {
+        ...e,
+        ...markers,
+        data: { ...e.data, pathStyle: displayPrefs.edgePath },
+        style: {
+          ...e.style,
+          opacity: related ? (e.source === hoveredId || e.target === hoveredId ? 1 : 0.15) : (e.style?.opacity ?? 1),
+        },
+        labelStyle: e.labelStyle,
+      }
+    })
     return { displayNodes: dns, displayEdges: des }
-  }, [nodes, edges, filters, hoveredId, collapsed])
+  }, [nodes, edges, filters, hoveredId, collapsed, displayPrefs])
 
   const searchableCanvasNodes = useMemo(() => {
     return nodes
@@ -2035,6 +2062,17 @@ function GraphCanvas({
                     </CommandGroup>
                   </CommandList>
                 </Command>
+              </PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Вид линий и стрелок">
+                  <Paintbrush className="h-4 w-4 shrink-0" />
+                  Вид
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72">
+                <GraphAppearancePopover prefs={displayPrefs} onChange={setDisplayPrefs} />
               </PopoverContent>
             </Popover>
             <Popover>

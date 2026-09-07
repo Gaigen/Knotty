@@ -83,6 +83,7 @@ export async function GET(_req: Request, { params }: Params) {
         x: n.x,
         y: n.y,
         text: n.text,
+        color: n.color,
         w: n.w,
         h: n.h,
         task,

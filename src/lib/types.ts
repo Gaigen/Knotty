@@ -173,6 +173,7 @@ export interface GraphNodeDto {
   x: number
   y: number
   text: string | null
+  color: string | null
   w: number | null
   h: number | null
   task?: GraphTaskSnapshot

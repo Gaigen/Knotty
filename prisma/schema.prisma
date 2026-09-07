@@ -180,6 +180,7 @@ model GraphNode {
   x         Float      @default(0)
   y         Float      @default(0)
   text      String? // note — Markdown; group — заголовок
+  color     String? // hex, сейчас — рамки
   w         Float?
   h         Float?
   createdAt DateTime   @default(now())
