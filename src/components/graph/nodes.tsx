@@ -54,6 +54,7 @@ export interface TaskNodeData extends Record<string, unknown> {
   assignee?: UserDto | null
   dimmed?: boolean
   onResize?: (id: string, w?: number, h?: number) => void
+  onResizeStart?: (id: string) => void
   onOpenTask?: (nodeId: string, taskId: string) => void
   onDeleteNode?: (nodeId: string, label: string) => void
   hasTreeChildren?: boolean
@@ -68,6 +69,7 @@ export interface NoteNodeData extends Record<string, unknown> {
   /** открыть заметку в большом окне предпросмотра */
   onExpand?: (id: string, text: string) => void
   onResize?: (id: string, w?: number, h?: number) => void
+  onResizeStart?: (id: string) => void
   onDeleteNode?: (nodeId: string, label: string) => void
 }
 
@@ -77,6 +79,7 @@ export interface AttachmentNodeData extends Record<string, unknown> {
   /** полноэкранный просмотр картинки / открытие файла */
   onOpenPreview?: (att: { id: string; fileName: string; mime: string; hasPreview: boolean }) => void
   onResize?: (id: string, w?: number, h?: number) => void
+  onResizeStart?: (id: string) => void
   onDeleteNode?: (nodeId: string, label: string) => void
   /** true — подогнать размер ноды по контенту при первой загрузке медиа */
   autoFitSize?: boolean
@@ -153,6 +156,7 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
         lineStyle={RESIZER_LINE}
         lineClassName={RESIZER_LINE_CLS}
         handleStyle={RESIZER_HANDLE}
+        onResizeStart={() => d.onResizeStart?.(id)}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
       <ConnHandle type="target" position={Position.Left} hidden={far} />
@@ -301,6 +305,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
         lineStyle={RESIZER_LINE}
         lineClassName={RESIZER_LINE_CLS}
         handleStyle={{ ...RESIZER_HANDLE, background: '#d97706' }}
+        onResizeStart={() => d.onResizeStart?.(id)}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
       <ConnHandle type="target" position={Position.Left} hidden={far} />
@@ -411,6 +416,7 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
         handleStyle={RESIZER_HANDLE}
         lineClassName={RESIZER_LINE_CLS}
         keepAspectRatio={keepRatio}
+        onResizeStart={() => d.onResizeStart?.(id)}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
       <ConnHandle type="target" position={Position.Left} hidden={far} />

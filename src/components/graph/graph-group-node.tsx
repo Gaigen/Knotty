@@ -25,6 +25,7 @@ export interface GroupNodeData extends Record<string, unknown> {
   collapsed?: boolean
   dimmed?: boolean
   onResize?: (id: string, w?: number, h?: number) => void
+  onResizeStart?: (id: string) => void
   onRename?: (id: string, title: string) => void
   onToggleCollapse?: (id: string) => void
   onUngroup?: (id: string) => void
@@ -95,6 +96,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
         lineStyle={RESIZER_LINE}
         lineClassName="hidden"
         handleStyle={RESIZER_HANDLE}
+        onResizeStart={() => d.onResizeStart?.(id)}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
 

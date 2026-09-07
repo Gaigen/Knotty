@@ -7,6 +7,12 @@ export type GraphPositionEntry = {
   parentId?: string | null
 }
 
+export type GraphSizeEntry = {
+  id: string
+  w: number
+  h: number
+}
+
 export type GraphNodeSnapshot = {
   refType: 'task' | 'attachment' | 'note' | 'group'
   refId?: string | null

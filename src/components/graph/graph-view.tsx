@@ -52,7 +52,7 @@ import { GraphCanvasHints } from '@/components/graph/graph-canvas-hints'
 import { GraphAlignmentGuides } from '@/components/graph/graph-alignment-guides'
 import { useGraphHistory } from '@/components/graph/use-graph-history'
 import { computeAlignmentSnap, type AlignmentGuide, type GuideBox } from '@/lib/graph-guides'
-import type { GraphEdgeSnapshot, GraphNodeSnapshot, GraphPositionEntry } from '@/lib/graph-history'
+import type { GraphEdgeSnapshot, GraphNodeSnapshot, GraphPositionEntry, GraphSizeEntry } from '@/lib/graph-history'
 import { isEditableTarget } from '@/lib/keyboard'
 import type { ProjectDetailDto, UserDto } from '@/lib/types'
 
@@ -235,7 +235,14 @@ function GraphCanvas({
   const [activeGuides, setActiveGuides] = useState<AlignmentGuide[]>([])
   const graphHistory = useGraphHistory()
   const dragBeforeRef = useRef<GraphPositionEntry[] | null>(null)
+  const resizeBeforeRef = useRef<Map<string, { w: number; h: number }>>(new Map())
+  const localGraphTouchAt = useRef(0)
   const historyRecordingRef = useRef(true)
+  const LOCAL_GRAPH_GRACE_MS = 800
+
+  const markLocalGraphChange = useCallback(() => {
+    localGraphTouchAt.current = Date.now()
+  }, [])
   // контекстное меню по ПКМ: { x, y } — экран; flow — координаты канваса для создания в точке
   const [ctxMenu, setCtxMenu] = useState<{
     x: number
@@ -358,6 +365,7 @@ function GraphCanvas({
 
   const persistPositions = useCallback(
     async (entries: GraphPositionEntry[]) => {
+      markLocalGraphChange()
       await savePositions.mutateAsync({
         projectId: project.id,
         positions: entries.map((e) => ({
@@ -368,7 +376,7 @@ function GraphCanvas({
         })),
       })
     },
-    [project.id, savePositions]
+    [markLocalGraphChange, project.id, savePositions]
   )
 
   const pushMoveHistory = useCallback(
@@ -398,6 +406,42 @@ function GraphCanvas({
     [applyPositionEntries, graphHistory, persistPositions, readOnly]
   )
 
+  const applySizeEntry = useCallback(
+    (entry: GraphSizeEntry) => {
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === entry.id ? { ...n, style: { ...n.style, width: entry.w, height: entry.h } } : n
+        )
+      )
+    },
+    [setNodes]
+  )
+
+  const pushResizeHistory = useCallback(
+    (before: GraphSizeEntry, after: GraphSizeEntry) => {
+      if (!historyRecordingRef.current || readOnly) return
+      if (before.w === after.w && before.h === after.h) return
+      graphHistory.push({
+        label: 'изменение размера',
+        undo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          applySizeEntry(before)
+          await updateNode.mutateAsync({ id: before.id, w: before.w, h: before.h })
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          applySizeEntry(after)
+          await updateNode.mutateAsync({ id: after.id, w: after.w, h: after.h })
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [applySizeEntry, graphHistory, markLocalGraphChange, readOnly, updateNode]
+  )
+
   const snapshotGraphNode = useCallback(
     (nodeId: string): GraphNodeSnapshot | null => {
       const gn = graph?.nodes.find((n) => n.id === nodeId)
@@ -418,6 +462,7 @@ function GraphCanvas({
 
   const restoreGraphNode = useCallback(
     async (snap: GraphNodeSnapshot) => {
+      markLocalGraphChange()
       const created = await createNode.mutateAsync({
         projectId: project.id,
         refType: snap.refType,
@@ -438,7 +483,57 @@ function GraphCanvas({
       }
       return created.id
     },
-    [createNode, project.id, updateNode]
+    [createNode, markLocalGraphChange, project.id, updateNode]
+  )
+
+  const pushCreateNodeHistory = useCallback(
+    (snap: GraphNodeSnapshot, nodeId: string) => {
+      if (!historyRecordingRef.current || readOnly) return
+      let liveId = nodeId
+      graphHistory.push({
+        label: 'создание на канвасе',
+        undo: async () => {
+          if (!liveId) return
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          await deleteNode.mutateAsync({ id: liveId, projectId: project.id })
+          liveId = ''
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          liveId = await restoreGraphNode(snap)
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [deleteNode, graphHistory, markLocalGraphChange, project.id, readOnly, restoreGraphNode]
+  )
+
+  const pushWrapHistory = useCallback(
+    (groupId: string, childIds: string[]) => {
+      if (!historyRecordingRef.current || readOnly) return
+      let gid = groupId
+      const ids = [...childIds]
+      graphHistory.push({
+        label: 'группировка',
+        undo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          await deleteNode.mutateAsync({ id: gid, projectId: project.id })
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          const r = await wrapGroup.mutateAsync({ projectId: project.id, nodeIds: ids })
+          gid = r.id
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [deleteNode, graphHistory, markLocalGraphChange, project.id, readOnly, wrapGroup]
   )
 
   const pushDeleteNodesHistory = useCallback(
@@ -452,6 +547,7 @@ function GraphCanvas({
         label: 'удаление с канваса',
         undo: async () => {
           historyRecordingRef.current = false
+          markLocalGraphChange()
           restoredIds = []
           for (const snap of snapshots) {
             restoredIds.push(await restoreGraphNode(snap))
@@ -460,6 +556,7 @@ function GraphCanvas({
         },
         redo: async () => {
           historyRecordingRef.current = false
+          markLocalGraphChange()
           for (const id of restoredIds.length ? restoredIds : deletedIds) {
             await deleteNode.mutateAsync({ id, projectId: project.id })
           }
@@ -468,7 +565,7 @@ function GraphCanvas({
         },
       })
     },
-    [deleteNode, graphHistory, project.id, readOnly, restoreGraphNode, snapshotGraphNode]
+    [deleteNode, graphHistory, markLocalGraphChange, project.id, readOnly, restoreGraphNode, snapshotGraphNode]
   )
 
   const edgeSnapshotFromEdge = useCallback((e: Edge): GraphEdgeSnapshot | null => {
@@ -678,15 +775,39 @@ function GraphCanvas({
   )
 
   // сохранение размеров ноды после ресайза (w/h персистятся в GraphNode)
-  const handleNodeResize = useCallback((id: string, w?: number, h?: number) => {
-    updateNodeRef.current.mutate({
-      id,
-      w: w ? Math.round(w) : undefined,
-      h: h ? Math.round(h) : undefined,
-    })
-  }, [])
+  const handleNodeResizeStart = useCallback(
+    (id: string) => {
+      const n = getNode(id)
+      if (!n) return
+      const w = Math.round((n.measured?.width ?? n.width ?? Number(n.style?.width) ?? 220) as number)
+      const h = Math.round((n.measured?.height ?? n.height ?? Number(n.style?.height) ?? 100) as number)
+      resizeBeforeRef.current.set(id, { w, h })
+    },
+    [getNode]
+  )
+
+  const handleNodeResize = useCallback(
+    (id: string, w?: number, h?: number) => {
+      const before = resizeBeforeRef.current.get(id)
+      resizeBeforeRef.current.delete(id)
+      const nw = w ? Math.round(w) : undefined
+      const nh = h ? Math.round(h) : undefined
+      if (!nw || !nh) return
+      markLocalGraphChange()
+      updateNodeRef.current.mutate(
+        { id, w: nw, h: nh },
+        {
+          onSuccess: () => {
+            if (before) pushResizeHistory({ id, w: before.w, h: before.h }, { id, w: nw, h: nh })
+          },
+        }
+      )
+    },
+    [markLocalGraphChange, pushResizeHistory]
+  )
 
   const handleAutoFitAttachment = useCallback((nodeId: string, w: number, h: number) => {
+    markLocalGraphChange()
     setNodes((nds) =>
       nds.map((n) =>
         n.id === nodeId
@@ -695,7 +816,7 @@ function GraphCanvas({
       )
     )
     updateNodeRef.current.mutate({ id: nodeId, w, h })
-  }, [setNodes])
+  }, [markLocalGraphChange, setNodes])
 
   // fix: текст заметок с последнего синка сервера
   // но локально он другой (пользователь печатает), локальная версия сохраняется
@@ -709,6 +830,9 @@ function GraphCanvas({
   // синхронизация данных сервера → ноды/рёбра React Flow (ФТ-3.7)
   useEffect(() => {
     if (!graph) return
+    if (Date.now() - localGraphTouchAt.current > LOCAL_GRAPH_GRACE_MS) {
+      graphHistory.clear()
+    }
     const prevServerText = serverNoteTextRef.current
     const newServerText = new Map<string, string>()
     for (const n of graph.nodes) {
@@ -734,6 +858,7 @@ function GraphCanvas({
             title: n.text?.trim() || 'Пачка',
             childCount: childCountByGroup.get(n.id) ?? 0,
             onResize: handleNodeResize,
+            onResizeStart: handleNodeResizeStart,
             onRename: (id: string, title: string) => updateNodeRef.current.mutate({ id, text: title }),
             onToggleCollapse: toggleGroupCollapse,
             onUngroup: (id: string) => {
@@ -756,6 +881,7 @@ function GraphCanvas({
             snapshot: n.task,
             assignee: n.task.assigneeId ? userById.get(n.task.assigneeId) ?? null : null,
             onResize: handleNodeResize,
+            onResizeStart: handleNodeResizeStart,
             onOpenTask: openTaskFromNode,
             onDeleteNode: requestDeleteNode,
             hasTreeChildren: treeChildOf.has(n.id),
@@ -783,6 +909,7 @@ function GraphCanvas({
               setNoteEdit(false)
             },
             onResize: handleNodeResize,
+            onResizeStart: handleNodeResizeStart,
             onDeleteNode: requestDeleteNode,
           } as NoteNodeData,
         }
@@ -801,6 +928,7 @@ function GraphCanvas({
           attachment: att,
           onOpenPreview: openAttachmentPreview,
           onResize: handleNodeResize,
+          onResizeStart: handleNodeResizeStart,
           onDeleteNode: requestDeleteNode,
           autoFitSize: !n.h && (previewKind === 'image' || previewKind === 'video'),
           onAutoFitSize: handleAutoFitAttachment,
@@ -1111,6 +1239,7 @@ function GraphCanvas({
   const onConnect = useCallback(
     (c: Connection) => {
       if (!c.source || !c.target) return
+      markLocalGraphChange()
       const src = nodes.find((n) => n.id === c.source)
       const tgt = nodes.find((n) => n.id === c.target)
       if (src?.type === 'taskRF' && tgt?.type === 'taskRF') {
@@ -1137,7 +1266,7 @@ function GraphCanvas({
         }
       )
     },
-    [nodes, project.id, createCanvasEdge, pushEdgeCreateHistory]
+    [nodes, project.id, createCanvasEdge, pushEdgeCreateHistory, markLocalGraphChange]
   )
 
   function submitConnect(type: 'blocks' | 'relates' | 'canvas') {
@@ -1418,15 +1547,34 @@ function GraphCanvas({
     else if (kind === 'group') {
       const pos = pendingPosRef.current ?? centerPosition()
       pendingPosRef.current = null
-      createNode.mutate({
-        projectId: project.id,
-        refType: 'group',
-        x: pos.x,
-        y: pos.y,
-        text: 'Пачка',
-        w: DEFAULT_GROUP_SIZE.w,
-        h: DEFAULT_GROUP_SIZE.h,
-      })
+      markLocalGraphChange()
+      createNode.mutate(
+        {
+          projectId: project.id,
+          refType: 'group',
+          x: pos.x,
+          y: pos.y,
+          text: 'Пачка',
+          w: DEFAULT_GROUP_SIZE.w,
+          h: DEFAULT_GROUP_SIZE.h,
+        },
+        {
+          onSuccess: (res) => {
+            pushCreateNodeHistory(
+              {
+                refType: 'group',
+                x: pos.x,
+                y: pos.y,
+                w: DEFAULT_GROUP_SIZE.w,
+                h: DEFAULT_GROUP_SIZE.h,
+                text: 'Пачка',
+                parentId: null,
+              },
+              res.id
+            )
+          },
+        }
+      )
     }
     else fileInputRef.current?.click()
   }
@@ -1437,10 +1585,14 @@ function GraphCanvas({
       toast.message('Выделите ноды для рамки')
       return
     }
+    markLocalGraphChange()
     wrapGroup.mutate(
       { projectId: project.id, nodeIds: ids },
       {
-        onSuccess: () => toast.success('Рамка создана'),
+        onSuccess: (res) => {
+          pushWrapHistory(res.id, ids)
+          toast.success('Рамка создана')
+        },
         onError: (e) => toast.error(e.message),
       }
     )
@@ -1562,7 +1714,9 @@ function GraphCanvas({
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Ошибка создания')
       const task = await res.json()
       const pos = takePosition()
-      await createNode.mutateAsync({ projectId: project.id, refType: 'task', refId: task.id, x: pos.x, y: pos.y })
+      markLocalGraphChange()
+      const created = await createNode.mutateAsync({ projectId: project.id, refType: 'task', refId: task.id, x: pos.x, y: pos.y })
+      pushCreateNodeHistory({ refType: 'task', refId: task.id, x: pos.x, y: pos.y, parentId: null }, created.id)
       // fix: задача должна появиться в списке и на доске без перезагрузки (п. 1.2)
       qc.invalidateQueries({ queryKey: ['tasks', project.id] })
       qc.invalidateQueries({ queryKey: ['projects'] })
@@ -1578,7 +1732,9 @@ function GraphCanvas({
   async function addExistingTask(taskId: string) {
     const pos = takePosition()
     try {
-      await createNode.mutateAsync({ projectId: project.id, refType: 'task', refId: taskId, x: pos.x, y: pos.y })
+      markLocalGraphChange()
+      const created = await createNode.mutateAsync({ projectId: project.id, refType: 'task', refId: taskId, x: pos.x, y: pos.y })
+      pushCreateNodeHistory({ refType: 'task', refId: taskId, x: pos.x, y: pos.y, parentId: null }, created.id)
       setPickTaskOpen(false)
     } catch (e) {
       toast.error((e as Error).message)
@@ -1587,7 +1743,9 @@ function GraphCanvas({
 
   async function createNote(text = '') {
     const pos = takePosition()
-    await createNode.mutateAsync({ projectId: project.id, refType: 'note', x: pos.x, y: pos.y, text })
+    markLocalGraphChange()
+    const created = await createNode.mutateAsync({ projectId: project.id, refType: 'note', x: pos.x, y: pos.y, text })
+    pushCreateNodeHistory({ refType: 'note', x: pos.x, y: pos.y, text, parentId: null }, created.id)
   }
 
   async function uploadFileToCanvas(file: File, position?: { x: number; y: number }) {
@@ -1599,7 +1757,9 @@ function GraphCanvas({
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Ошибка загрузки')
       const created: { id: string }[] = await res.json()
       for (const att of created) {
-        await createNode.mutateAsync({ projectId: project.id, refType: 'attachment', refId: att.id, x: pos.x, y: pos.y })
+        markLocalGraphChange()
+        const node = await createNode.mutateAsync({ projectId: project.id, refType: 'attachment', refId: att.id, x: pos.x, y: pos.y })
+        pushCreateNodeHistory({ refType: 'attachment', refId: att.id, x: pos.x, y: pos.y, parentId: null }, node.id)
       }
       toast.success(`Файл «${file.name}» на канвасе`)
     } catch (e) {
@@ -1793,15 +1953,34 @@ function GraphCanvas({
                 <DropdownMenuItem
                   onClick={() => {
                     const pos = centerPosition()
-                    createNode.mutate({
-                      projectId: project.id,
-                      refType: 'group',
-                      x: pos.x,
-                      y: pos.y,
-                      text: 'Пачка',
-                      w: DEFAULT_GROUP_SIZE.w,
-                      h: DEFAULT_GROUP_SIZE.h,
-                    })
+                    markLocalGraphChange()
+                    createNode.mutate(
+                      {
+                        projectId: project.id,
+                        refType: 'group',
+                        x: pos.x,
+                        y: pos.y,
+                        text: 'Пачка',
+                        w: DEFAULT_GROUP_SIZE.w,
+                        h: DEFAULT_GROUP_SIZE.h,
+                      },
+                      {
+                        onSuccess: (res) => {
+                          pushCreateNodeHistory(
+                            {
+                              refType: 'group',
+                              x: pos.x,
+                              y: pos.y,
+                              w: DEFAULT_GROUP_SIZE.w,
+                              h: DEFAULT_GROUP_SIZE.h,
+                              text: 'Пачка',
+                              parentId: null,
+                            },
+                            res.id
+                          )
+                        },
+                      }
+                    )
                   }}
                 >
                   <BoxSelect className="h-4 w-4" /> Рамка
