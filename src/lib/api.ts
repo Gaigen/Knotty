@@ -434,6 +434,8 @@ export function useCreateGraphNode() {
       x?: number
       y?: number
       text?: string
+      w?: number
+      h?: number
     }) => apiFetch<{ id: string }>(`/api/projects/${projectId}/graph/nodes`, { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: (_n, vars) => qc.invalidateQueries({ queryKey: ['graph', vars.projectId] }),
   })
@@ -457,7 +459,16 @@ export function useBulkAddGraphTasks() {
 export function useUpdateGraphNode() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; projectId?: string; x?: number; y?: number; text?: string; w?: number; h?: number }) =>
+    mutationFn: ({ id, ...body }: {
+      id: string
+      projectId?: string
+      x?: number
+      y?: number
+      text?: string
+      w?: number
+      h?: number
+      parentId?: string | null
+    }) =>
       apiFetch<{ ok: boolean }>(`/api/graph/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   })
 }
@@ -473,8 +484,26 @@ export function useDeleteGraphNode() {
 
 export function useSaveGraphPositions() {
   return useMutation({
-    mutationFn: ({ projectId, positions }: { projectId: string; positions: { id: string; x: number; y: number }[] }) =>
+    mutationFn: ({
+      projectId,
+      positions,
+    }: {
+      projectId: string
+      positions: { id: string; x: number; y: number; parentId?: string | null }[]
+    }) =>
       apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/graph`, { method: 'PATCH', body: JSON.stringify({ positions }) }),
+  })
+}
+
+export function useWrapGraphGroup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ projectId, nodeIds, title }: { projectId: string; nodeIds: string[]; title?: string }) =>
+      apiFetch<{ id: string }>(`/api/projects/${projectId}/graph/groups`, {
+        method: 'POST',
+        body: JSON.stringify({ nodeIds, title }),
+      }),
+    onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ['graph', vars.projectId] }),
   })
 }
 
@@ -483,10 +512,20 @@ export function useSaveGraphPositions() {
 export function useCreateGraphEdge() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ projectId, fromNodeId, toNodeId }: { projectId: string; fromNodeId: string; toNodeId: string }) =>
+    mutationFn: ({
+      projectId,
+      fromNodeId,
+      toNodeId,
+      kind,
+    }: {
+      projectId: string
+      fromNodeId: string
+      toNodeId: string
+      kind?: 'canvas' | 'relates' | 'blocks'
+    }) =>
       apiFetch<{ id: string }>(`/api/projects/${projectId}/graph/edges`, {
         method: 'POST',
-        body: JSON.stringify({ fromNodeId, toNodeId }),
+        body: JSON.stringify({ fromNodeId, toNodeId, kind }),
       }),
     onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ['graph', vars.projectId] }),
   })

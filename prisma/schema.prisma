@@ -169,20 +169,24 @@ model Attachment {
 
 // Позиции для графа; сами данные живут в задачах/вложениях
 model GraphNode {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  refType   String // task / attachment / note
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  refType   String // task / attachment / note / group
   refId     String?
-  x         Float    @default(0)
-  y         Float    @default(0)
-  text      String? // для note — Markdown
+  parentId  String?
+  parent    GraphNode? @relation("GraphNodeTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  GraphNode[] @relation("GraphNodeTree")
+  x         Float      @default(0)
+  y         Float      @default(0)
+  text      String? // note — Markdown; group — заголовок
   w         Float?
   h         Float?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@index([projectId, refType, refId])
+  @@index([parentId])
 }
 
 // История изменений — с MVP, задним числом не восстановишь (п. 4.1)
@@ -199,14 +203,15 @@ model Activity {
   @@index([taskId, createdAt])
 }
 
-// Свободные рёбра канваса: заметка/файл ↔ задача и т.п. — визуальные ассоциации
-// без семантики blocks/relates (те живут в Link между задачами)
+// Рёбра канваса: canvas (заметка/файл) и blocks/relates, если хотя бы один конец — рамка.
+// blocks/relates между задачами живут в Link.
 model GraphEdge {
   id         String   @id @default(cuid())
   projectId  String
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fromNodeId String
   toNodeId   String
+  kind       String   @default("canvas") // canvas / relates / blocks
   createdAt  DateTime @default(now())
 
   @@unique([fromNodeId, toNodeId])

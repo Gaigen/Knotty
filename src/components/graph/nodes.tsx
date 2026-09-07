@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Handle, NodeResizer, NodeToolbar, Position, type NodeProps } from '@xyflow/react'
-import { GripHorizontal, Maximize2, MessageSquare, Paperclip, Pencil, SquareArrowOutUpRight, Trash2 } from 'lucide-react'
+import { GripHorizontal, Maximize2, MessageSquare, Paperclip, Pencil, SquareArrowOutUpRight, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import { MarkdownView, isMarkdownCheckboxInteraction } from '@/components/shared/markdown'
 import { TypeIcon, UserAvatar, PriorityIcon, LabelChip } from '@/components/shared/bits'
 import {
@@ -12,6 +12,7 @@ import {
 import { fitGraphAttachmentDimensions, resolveAttachmentPreviewKind } from '@/lib/attachment-preview'
 import { cn } from '@/lib/utils'
 import type { GraphTaskSnapshot, UserDto } from '@/lib/types'
+import { useZoomBand } from '@/components/graph/use-zoom-band'
 
 const RESIZER_LINE = { borderWidth: 0 }
 const RESIZER_HANDLE = {
@@ -29,6 +30,25 @@ const RESIZER_LINE_CLS = 'hidden'
 const HANDLE_CLS =
   '!z-50 !h-3 !w-3 !rounded-full !border-2 !border-white !bg-teal-600 shadow-md pointer-events-auto'
 
+function ConnHandle({
+  type,
+  position,
+  hidden,
+}: {
+  type: 'source' | 'target'
+  position: Position
+  hidden?: boolean
+}) {
+  return (
+    <Handle
+      type={type}
+      position={position}
+      isConnectable={!hidden}
+      className={cn(HANDLE_CLS, hidden && '!opacity-0 !pointer-events-none')}
+    />
+  )
+}
+
 export interface TaskNodeData extends Record<string, unknown> {
   snapshot: GraphTaskSnapshot
   assignee?: UserDto | null
@@ -36,6 +56,9 @@ export interface TaskNodeData extends Record<string, unknown> {
   onResize?: (id: string, w?: number, h?: number) => void
   onOpenTask?: (nodeId: string, taskId: string) => void
   onDeleteNode?: (nodeId: string, label: string) => void
+  hasTreeChildren?: boolean
+  treeCollapsed?: boolean
+  onToggleTreeCollapse?: (id: string) => void
 }
 
 export interface NoteNodeData extends Record<string, unknown> {
@@ -98,17 +121,19 @@ function TBtn({
 export function TaskNodeCard({ data, selected, id }: NodeProps) {
   const d = data as TaskNodeData
   const s = d.snapshot
+  const band = useZoomBand()
+  const far = band === 'far'
   return (
     <div
       className={cn(
-        'relative flex h-full w-full min-w-[180px] flex-col rounded-xl border-2 bg-card p-2.5 shadow-md transition-opacity',
+        'relative flex h-full w-full min-h-[84px] min-w-[180px] flex-col rounded-xl border-2 bg-card p-2.5 shadow-md transition-opacity',
         s.blocked ? 'border-red-500' : 'border-transparent',
         d.dimmed && 'opacity-25',
         selected && 'ring-2 ring-teal-500/60'
       )}
       style={!s.blocked ? { borderColor: s.statusColor } : undefined}
     >
-      <NodeToolbar isVisible={selected} position={Position.Top} offset={10} className="nodrag nopan">
+      <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
           <TBtn title="Открыть задачу" onClick={() => d.onOpenTask?.(id, s.id)}>
             <SquareArrowOutUpRight className="h-3.5 w-3.5" />
@@ -121,7 +146,7 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
       </NodeToolbar>
 
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !far}
         minWidth={180}
         minHeight={84}
         color="#0f766e"
@@ -130,53 +155,79 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
         handleStyle={RESIZER_HANDLE}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
-      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
+      <ConnHandle type="target" position={Position.Left} hidden={far} />
 
-      {/* шапка: тип, ключ, статус */}
-      <div className="flex items-center gap-1.5">
-        <TypeIcon type={s.type} className="h-4 w-4" />
-        <span className="font-mono text-[11px] text-muted-foreground">{s.key}</span>
-        <span
-          className="ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-          style={{ backgroundColor: `${s.statusColor}1f`, color: s.statusColor }}
-        >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.statusColor }} />
-          {s.statusName}
-        </span>
-      </div>
-
-      {/* название: сколько влезло в высоту ноды — столько видно */}
-      <p className="mt-1 min-h-0 flex-1 overflow-hidden text-[13px] font-medium leading-snug">{s.title}</p>
-
-      {s.labels.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1 overflow-hidden">
-          {s.labels.slice(0, 4).map((l) => (
-            <LabelChip key={l} label={l} />
-          ))}
-          {s.labels.length > 4 && <span className="text-[10px] text-muted-foreground">+{s.labels.length - 4}</span>}
+      {far ? (
+        <div className="flex h-full min-h-0 items-center gap-1.5">
+          {d.hasTreeChildren && (
+            <span className="text-muted-foreground">
+              {d.treeCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </span>
+          )}
+          <TypeIcon type={s.type} className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate font-mono text-[11px] font-medium">{s.key}</span>
+          <span className="ml-auto h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.statusColor }} />
         </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5">
+            {d.hasTreeChildren && (
+              <button
+                type="button"
+                className="nodrag nopan rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                title={d.treeCollapsed ? 'Развернуть подзадачи' : 'Свернуть подзадачи'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  d.onToggleTreeCollapse?.(id)
+                }}
+              >
+                {d.treeCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            )}
+            <TypeIcon type={s.type} className="h-4 w-4" />
+            <span className="font-mono text-[11px] text-muted-foreground">{s.key}</span>
+            <span
+              className="ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{ backgroundColor: `${s.statusColor}1f`, color: s.statusColor }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: s.statusColor }} />
+              {s.statusName}
+            </span>
+          </div>
+
+          <p className="mt-1 min-h-0 flex-1 overflow-hidden text-[13px] font-medium leading-snug">{s.title}</p>
+
+          {s.labels.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1 overflow-hidden">
+              {s.labels.slice(0, 4).map((l) => (
+                <LabelChip key={l} label={l} />
+              ))}
+              {s.labels.length > 4 && <span className="text-[10px] text-muted-foreground">+{s.labels.length - 4}</span>}
+            </div>
+          )}
+
+          <div className="mt-1.5 flex items-center gap-2">
+            <PriorityIcon priority={s.priority} />
+            {s.commentCount > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                <MessageSquare className="h-3 w-3" /> {s.commentCount}
+              </span>
+            )}
+            {s.attachmentCount > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${s.attachmentCount} вложений`}>
+                <Paperclip className="h-3 w-3" /> {s.attachmentCount}
+              </span>
+            )}
+            {d.assignee && (
+              <span className="ml-auto">
+                <UserAvatar user={d.assignee} size={18} />
+              </span>
+            )}
+          </div>
+        </>
       )}
 
-      <div className="mt-1.5 flex items-center gap-2">
-        <PriorityIcon priority={s.priority} />
-        {s.commentCount > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground">
-            <MessageSquare className="h-3 w-3" /> {s.commentCount}
-          </span>
-        )}
-        {s.attachmentCount > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${s.attachmentCount} вложений`}>
-            <Paperclip className="h-3 w-3" /> {s.attachmentCount}
-          </span>
-        )}
-        {d.assignee && (
-          <span className="ml-auto">
-            <UserAvatar user={d.assignee} size={18} />
-          </span>
-        )}
-      </div>
-
-      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
+      <ConnHandle type="source" position={Position.Right} hidden={far} />
     </div>
   )
 }
@@ -184,6 +235,8 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
 /** Нода-заметка (ФТ-3.2): Markdown, редактирование двойным кликом, предпросмотр */
 export function NoteNodeCard({ data, selected, id }: NodeProps) {
   const d = data as NoteNodeData
+  const band = useZoomBand()
+  const far = band === 'far'
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(d.text)
   const [prevText, setPrevText] = useState(d.text)
@@ -209,7 +262,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
   return (
     <div
       className={cn(
-        'relative flex h-full w-full min-w-[200px] flex-col rounded-xl border-2 border-amber-300/70 bg-amber-50/90 p-3 shadow-md transition-opacity dark:border-amber-500/40 dark:bg-amber-950/30',
+        'relative flex h-full w-full min-h-[84px] min-w-[200px] flex-col rounded-xl border-2 border-amber-300/70 bg-amber-50/90 p-3 shadow-md transition-opacity dark:border-amber-500/40 dark:bg-amber-950/30',
         d.dimmed && 'opacity-25',
         selected && 'ring-2 ring-amber-400/60'
       )}
@@ -225,7 +278,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
       >
         <GripHorizontal className="h-3 w-3" />
       </div>
-      <NodeToolbar isVisible={selected} position={Position.Top} offset={10} className="nodrag nopan">
+      <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
           <TBtn title="Редактировать" onClick={() => setEditing(true)}>
             <Pencil className="h-3.5 w-3.5" />
@@ -241,7 +294,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
       </NodeToolbar>
 
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !far}
         minWidth={200}
         minHeight={84}
         color="#d97706"
@@ -250,8 +303,8 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
         handleStyle={{ ...RESIZER_HANDLE, background: '#d97706' }}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
-      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
-      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
+      <ConnHandle type="target" position={Position.Left} hidden={far} />
+      <ConnHandle type="source" position={Position.Right} hidden={far} />
 
       {editing ? (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -305,6 +358,8 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
   const a = d.attachment
   const kind = resolveAttachmentPreviewKind(a.mime, a.fileName)
   const keepRatio = attachmentNodeKeepAspect(kind)
+  const band = useZoomBand()
+  const far = band === 'far'
 
   return (
     <div
@@ -314,7 +369,7 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
         selected && 'ring-2 ring-teal-500/60'
       )}
     >
-      <NodeToolbar isVisible={selected} position={Position.Top} offset={10} className="nodrag nopan">
+      <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
           <TBtn title="Открыть (полноэкранный просмотр)" onClick={() => d.onOpenPreview?.(a)}>
             <Maximize2 className="h-3.5 w-3.5" />
@@ -348,7 +403,7 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
       </div>
 
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !far}
         minWidth={120}
         minHeight={64}
         color="#0f766e"
@@ -358,8 +413,8 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
         keepAspectRatio={keepRatio}
         onResizeEnd={(_, params) => d.onResize?.(id, params.width, params.height)}
       />
-      <Handle type="target" position={Position.Left} className={HANDLE_CLS} />
-      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
+      <ConnHandle type="target" position={Position.Left} hidden={far} />
+      <ConnHandle type="source" position={Position.Right} hidden={far} />
     </div>
   )
 }

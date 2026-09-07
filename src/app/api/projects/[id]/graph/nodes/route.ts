@@ -11,6 +11,8 @@ interface CreateNodeBody {
   x?: number
   y?: number
   text?: string
+  w?: number
+  h?: number
 }
 
 /** Создание ноды на канвасе (ФТ-3.3): задача (новая/существующая), заметка, файл */
@@ -24,7 +26,7 @@ export async function POST(req: Request, { params }: Params) {
     if (!project) throw new ApiError('Проект не найден', 404)
 
     const refType = body.refType ?? 'note'
-    if (!['task', 'attachment', 'note'].includes(refType)) throw new ApiError('Некорректный тип ноды')
+    if (!['task', 'attachment', 'note', 'group'].includes(refType)) throw new ApiError('Некорректный тип ноды')
 
     if (refType === 'task') {
       if (!body.refId) throw new ApiError('Не указана задача')
@@ -48,7 +50,9 @@ export async function POST(req: Request, { params }: Params) {
         refId: body.refId ?? null,
         x: Number(body.x) || 0,
         y: Number(body.y) || 0,
-        text: refType === 'note' ? body.text ?? '' : null,
+        text: refType === 'note' || refType === 'group' ? (body.text ?? (refType === 'group' ? 'Пачка' : '')) : null,
+        w: refType === 'group' ? Number(body.w) || 320 : undefined,
+        h: refType === 'group' ? Number(body.h) || 200 : undefined,
       },
     })
     publishProjectChange(projectId)

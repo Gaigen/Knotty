@@ -81,15 +81,16 @@ export async function buildProjectExport(projectId: string): Promise<ProjectExpo
       w: n.w,
       h: n.h,
       text: n.text,
+      parent: n.parentId != null ? nodeIdToIndex.get(n.parentId) ?? null : null,
     })),
     graphEdges: project.graphEdges
       .map((e) => {
         const from = nodeIdToIndex.get(e.fromNodeId)
         const to = nodeIdToIndex.get(e.toNodeId)
         if (from == null || to == null) return null
-        return { from, to }
+        return { from, to, kind: e.kind }
       })
-      .filter((x): x is { from: number; to: number } => x != null),
+      .filter((x): x is { from: number; to: number; kind: string } => x != null),
   }
 }
 

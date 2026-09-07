@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { ApiError, assertGraphEdgeAllowed } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -13,36 +13,18 @@ export async function POST(req: Request, { params }: Params) {
   try {
     const { id: projectId } = await params
     await getCurrentUser()
-    const body = await readJson<{ fromNodeId?: string; toNodeId?: string }>(req)
+    const body = await readJson<{ fromNodeId?: string; toNodeId?: string; kind?: string }>(req)
 
     const fromNodeId = body.fromNodeId
     const toNodeId = body.toNodeId
     if (!fromNodeId || !toNodeId) throw new ApiError('Не указаны ноды для связи')
-    if (fromNodeId === toNodeId) throw new ApiError('Нельзя связать ноду с самой собой')
 
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
     if (!project) throw new ApiError('Проект не найден', 404)
 
-    const nodes = await db.graphNode.findMany({
-      where: { projectId, id: { in: [fromNodeId, toNodeId] } },
-      select: { id: true },
-    })
-    if (nodes.length !== 2) throw new ApiError('Обе ноды должны принадлежать проекту')
+    const kind = await assertGraphEdgeAllowed(projectId, fromNodeId, toNodeId, body.kind ?? 'canvas')
 
-    // дубль в любом направлении
-    const dup = await db.graphEdge.findFirst({
-      where: {
-        projectId,
-        OR: [
-          { fromNodeId, toNodeId },
-          { fromNodeId: toNodeId, toNodeId: fromNodeId },
-        ],
-      },
-      select: { id: true },
-    })
-    if (dup) throw new ApiError('Эти ноды уже связаны')
-
-    const edge = await db.graphEdge.create({ data: { projectId, fromNodeId, toNodeId } })
+    const edge = await db.graphEdge.create({ data: { projectId, fromNodeId, toNodeId, kind } })
     publishProjectChange(projectId)
     return Response.json({ id: edge.id }, { status: 201 })
   } catch (e) {

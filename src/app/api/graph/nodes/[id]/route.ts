@@ -3,6 +3,7 @@ import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
 import { deleteStored } from '@/lib/server/storage'
+import { assertParentGroup, ungroupNode } from '@/lib/server/graph-groups'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -11,10 +12,21 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const { id } = await params
     await getCurrentUser()
-    const body = await readJson<{ x?: number; y?: number; text?: string; w?: number; h?: number }>(req)
+    const body = await readJson<{
+      x?: number
+      y?: number
+      text?: string
+      w?: number
+      h?: number
+      parentId?: string | null
+    }>(req)
 
     const node = await db.graphNode.findUnique({ where: { id } })
     if (!node) throw new ApiError('Нода не найдена', 404)
+
+    if (body.parentId !== undefined) {
+      await assertParentGroup(node.projectId, id, body.parentId)
+    }
 
     const data: Record<string, unknown> = {}
     if (typeof body.x === 'number') data.x = body.x
@@ -22,6 +34,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (typeof body.w === 'number') data.w = body.w
     if (typeof body.h === 'number') data.h = body.h
     if (typeof body.text === 'string') data.text = body.text.slice(0, 20000)
+    if (body.parentId !== undefined) data.parentId = body.parentId
 
     if (Object.keys(data).length === 0) return Response.json({ ok: true })
     const updated = await db.graphNode.update({ where: { id }, data })
@@ -42,6 +55,12 @@ export async function DELETE(_req: Request, { params }: Params) {
     await getCurrentUser()
     const node = await db.graphNode.findUnique({ where: { id } })
     if (!node) throw new ApiError('Нода не найдена', 404)
+
+    if (node.refType === 'group') {
+      await ungroupNode(node.id, node.projectId)
+      publishProjectChange(node.projectId)
+      return Response.json({ ok: true })
+    }
 
     // каскад: свободные рёбра, ссылающиеся на ноду
     await db.graphEdge.deleteMany({ where: { OR: [{ fromNodeId: id }, { toNodeId: id }] } })

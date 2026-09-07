@@ -2,7 +2,9 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { ApiError } from '@/lib/server/validation'
-import type { GraphDto, GraphNodeDto, Priority, TaskType } from '@/lib/types'
+import { collectBlockedTaskIds } from '@/lib/graph-blocks'
+import { assertParentGroup } from '@/lib/server/graph-groups'
+import type { GraphCanvasEdgeType, GraphDto, GraphNodeDto, Priority, TaskType } from '@/lib/types'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -29,7 +31,11 @@ export async function GET(_req: Request, { params }: Params) {
     ])
 
     const taskById = new Map(tasks.map((t) => [t.id, t]))
-    const blockedSet = new Set(links.filter((l) => l.type === 'blocks').map((l) => l.toTaskId))
+    const blockedSet = collectBlockedTaskIds({
+      links,
+      graphEdges: canvasEdgeRows,
+      nodes: nodeRows,
+    })
     const attachById = new Map(attachments.map((a) => [a.id, a]))
     const commentCounts = await db.comment.groupBy({ by: ['taskId'], where: { task: { projectId } }, _count: { _all: true } })
     const commentMap = new Map(commentCounts.map((c) => [c.taskId, c._count._all]))
@@ -64,11 +70,16 @@ export async function GET(_req: Request, { params }: Params) {
         const a = attachById.get(n.refId)
         if (!a) continue
         attachment = { id: a.id, fileName: a.fileName, mime: a.mime, hasPreview: !!a.previewKey }
+      } else if (n.refType === 'group') {
+        // рамка
+      } else if (n.refType !== 'note') {
+        continue
       }
       nodes.push({
         id: n.id,
         refType: n.refType as GraphNodeDto['refType'],
         refId: n.refId,
+        parentId: n.parentId,
         x: n.x,
         y: n.y,
         text: n.text,
@@ -93,7 +104,12 @@ export async function GET(_req: Request, { params }: Params) {
     const nodeById = new Map(nodes.map((n) => [n.id, n]))
     for (const ce of canvasEdgeRows) {
       if (nodeById.has(ce.fromNodeId) && nodeById.has(ce.toNodeId)) {
-        edges.push({ id: `edge-${ce.id}`, source: ce.fromNodeId, target: ce.toNodeId, type: 'canvas' })
+        edges.push({
+          id: `edge-${ce.id}`,
+          source: ce.fromNodeId,
+          target: ce.toNodeId,
+          type: (ce.kind === 'blocks' || ce.kind === 'relates' ? ce.kind : 'canvas') as GraphCanvasEdgeType,
+        })
       }
     }
 
@@ -119,15 +135,25 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const { id: projectId } = await params
     await getCurrentUser()
-    const body = await readJson<{ positions?: { id: string; x: number; y: number }[] }>(req)
+    const body = await readJson<{
+      positions?: { id: string; x: number; y: number; parentId?: string | null }[]
+    }>(req)
     const positions = body.positions ?? []
     if (!Array.isArray(positions) || positions.length > 2000) throw new ApiError('Некорректные позиции')
+
+    for (const p of positions) {
+      if (p.parentId) await assertParentGroup(projectId, p.id, p.parentId)
+    }
 
     await db.$transaction(
       positions.map((p) =>
         db.graphNode.updateMany({
           where: { id: p.id, projectId },
-          data: { x: Number(p.x) || 0, y: Number(p.y) || 0 },
+          data: {
+            x: Number(p.x) || 0,
+            y: Number(p.y) || 0,
+            ...(p.parentId !== undefined ? { parentId: p.parentId } : {}),
+          },
         })
       )
     )

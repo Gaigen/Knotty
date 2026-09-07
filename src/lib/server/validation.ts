@@ -1,6 +1,15 @@
 import { db } from '@/lib/db'
 import { ALLOWED_CHILDREN, TYPE_LABELS_RU } from '@/lib/config'
 import type { LinkType, TaskType } from '@/lib/types'
+import {
+  blocksAdjacency,
+  findBlocksCycleFromAdj,
+  formatBlockPath,
+  groupEndpoint,
+  nodeEndpoint,
+  taskEndpoint,
+  type BlocksGraphInput,
+} from '@/lib/graph-blocks'
 
 export class ApiError extends Error {
   status: number
@@ -209,12 +218,107 @@ export async function assertLinkAllowed(fromTaskId: string, toTaskId: string, ty
   } else {
     const dup = existing.find((l) => l.type === 'blocks' && l.fromTaskId === fromTaskId && l.toTaskId === toTaskId)
     if (dup) throw new ApiError('Такая связь уже существует')
-    // [v1.1] вырожденный случай A→B + B→A — цикл длины 2, ловится тем же обходом (п. 4.1.2)
-    const cycle = await findBlocksCycle(fromTaskId, toTaskId, from.projectId)
+    const graph = await loadBlocksGraph(from.projectId)
+    const cycle = findBlocksCycleFromAdj(
+      taskEndpoint(fromTaskId),
+      taskEndpoint(toTaskId),
+      blocksAdjacency(graph)
+    )
     if (cycle) {
-      const keys = await taskKeys(cycle)
-      const pathStr = cycle.map((id) => keys.get(id) ?? '?').join(' → ')
+      const pathStr = await formatCyclePath(cycle)
       throw new ApiError(`Эта связь создаст цикл: ${pathStr}`)
     }
   }
+}
+
+export async function loadBlocksGraph(projectId: string): Promise<BlocksGraphInput> {
+  const [links, graphEdges, nodes] = await Promise.all([
+    db.link.findMany({
+      where: { fromTask: { projectId } },
+      select: { fromTaskId: true, toTaskId: true, type: true },
+    }),
+    db.graphEdge.findMany({
+      where: { projectId },
+      select: { fromNodeId: true, toNodeId: true, kind: true },
+    }),
+    db.graphNode.findMany({
+      where: { projectId },
+      select: { id: true, refType: true, refId: true },
+    }),
+  ])
+  return { links, graphEdges, nodes }
+}
+
+async function formatCyclePath(path: string[]): Promise<string> {
+  const labels = new Map<string, string>()
+  const taskIds = path.filter((p) => p.startsWith('t:')).map((p) => p.slice(2))
+  const groupIds = path.filter((p) => p.startsWith('g:')).map((p) => p.slice(2))
+  if (taskIds.length) {
+    const keys = await taskKeys(taskIds)
+    for (const [id, key] of keys) labels.set(taskEndpoint(id), key)
+  }
+  if (groupIds.length) {
+    const groups = await db.graphNode.findMany({
+      where: { id: { in: groupIds } },
+      select: { id: true, text: true },
+    })
+    for (const g of groups) labels.set(groupEndpoint(g.id), g.text?.trim() || 'Пачка')
+  }
+  return formatBlockPath(path, labels)
+}
+
+const GRAPH_EDGE_KINDS = new Set(['canvas', 'relates', 'blocks'])
+
+export async function assertGraphEdgeAllowed(
+  projectId: string,
+  fromNodeId: string,
+  toNodeId: string,
+  kind: string
+): Promise<'canvas' | 'relates' | 'blocks'> {
+  if (!GRAPH_EDGE_KINDS.has(kind)) throw new ApiError('Некорректный тип связи')
+  const k = kind as 'canvas' | 'relates' | 'blocks'
+  if (fromNodeId === toNodeId) throw new ApiError('Нельзя связать ноду с самой собой')
+
+  const nodes = await db.graphNode.findMany({
+    where: { projectId, id: { in: [fromNodeId, toNodeId] } },
+  })
+  if (nodes.length !== 2) throw new ApiError('Обе ноды должны принадлежать проекту')
+  const from = nodes.find((n) => n.id === fromNodeId)!
+  const to = nodes.find((n) => n.id === toNodeId)!
+
+  const fromTask = from.refType === 'task'
+  const toTask = to.refType === 'task'
+  if (fromTask && toTask) {
+    throw new ApiError('Связь между задачами создаётся как blocks/relates задачи')
+  }
+
+  const noteOrFile = (n: typeof from) => n.refType === 'note' || n.refType === 'attachment'
+  if ((noteOrFile(from) || noteOrFile(to)) && k !== 'canvas') {
+    throw new ApiError('Заметки и файлы связываются только визуально')
+  }
+
+  const dup = await db.graphEdge.findFirst({
+    where: {
+      projectId,
+      OR: [
+        { fromNodeId, toNodeId },
+        { fromNodeId: toNodeId, toNodeId: fromNodeId },
+      ],
+    },
+    select: { id: true },
+  })
+  if (dup) throw new ApiError('Эти ноды уже связаны')
+
+  if (k === 'blocks') {
+    const a = nodeEndpoint(from)
+    const b = nodeEndpoint(to)
+    if (!a || !b) throw new ApiError('blocks можно провести только к задаче или рамке')
+    const graph = await loadBlocksGraph(projectId)
+    const cycle = findBlocksCycleFromAdj(a, b, blocksAdjacency(graph))
+    if (cycle) {
+      const pathStr = await formatCyclePath(cycle)
+      throw new ApiError(`Эта связь создаст цикл: ${pathStr}`)
+    }
+  }
+  return k
 }

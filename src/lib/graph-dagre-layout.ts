@@ -33,6 +33,10 @@ export function nodeSize(n: Node): { w: number; h: number } {
   return { w, h: Math.max(h, 84) }
 }
 
+function isLayoutFree(n: Node): boolean {
+  return n.type !== 'groupRF' && !n.parentId
+}
+
 function indexNodes(nodes: Node[]): Map<string, Node> {
   return new Map(nodes.map((n) => [n.id, n]))
 }
@@ -40,7 +44,7 @@ function indexNodes(nodes: Node[]): Map<string, Node> {
 function placeNonTasks(nodes: Node[], positions: Map<string, Pos>, anchorY: number) {
   let x = 48
   for (const n of nodes) {
-    if (n.type === 'taskRF' || positions.has(n.id)) continue
+    if (n.type === 'taskRF' || n.type === 'groupRF' || n.parentId || positions.has(n.id)) continue
     const { w } = nodeSize(n)
     positions.set(n.id, { x, y: anchorY })
     x += w + GAP_X
@@ -152,7 +156,7 @@ function maxWidthInLayer(nodeById: Map<string, Node>, ids: string[]): number {
  * Без иерархии — горизонтальная полоса корней.
  */
 export function layoutTree(nodes: Node[], edges: Edge[]): Map<string, Pos> {
-  const taskNodes = nodes.filter((n) => n.type === 'taskRF')
+  const taskNodes = nodes.filter((n) => n.type === 'taskRF' && isLayoutFree(n))
   const positions = new Map<string, Pos>()
   const treeEdges = edges.filter((e) => e.id.startsWith('tree-'))
 
@@ -214,7 +218,7 @@ export function layoutTree(nodes: Node[], edges: Edge[]): Map<string, Pos> {
  * Столб: preorder parent→child, подзадачи прямо под родителем (indent).
  */
 export function layoutHierarchyColumn(nodes: Node[], edges: Edge[]): Map<string, Pos> {
-  const taskNodes = nodes.filter((n) => n.type === 'taskRF')
+  const taskNodes = nodes.filter((n) => n.type === 'taskRF' && isLayoutFree(n))
   const nodeById = indexNodes(taskNodes)
   const { parentOf, childrenMap } = hierarchyMaps(edges)
   const positions = new Map<string, Pos>()
@@ -250,7 +254,7 @@ export function layoutHierarchyColumn(nodes: Node[], edges: Edge[]): Map<string,
  * Изолированные задачи — отдельная горизонтальная полоса сверху.
  */
 export function layoutDependencyStrip(nodes: Node[], edges: Edge[]): Map<string, Pos> {
-  const taskNodes = nodes.filter((n) => n.type === 'taskRF')
+  const taskNodes = nodes.filter((n) => n.type === 'taskRF' && isLayoutFree(n))
   const nodeById = indexNodes(taskNodes)
   const taskIds = taskNodes.map((n) => n.id)
   const linkEdges = edges.filter((e) => {

@@ -32,9 +32,10 @@ export type ProjectExportV1 = {
     w?: number | null
     h?: number | null
     text?: string | null
+    parent?: number | null
   }>
   /** Индексы в graphNodes (новый формат) */
-  graphEdges?: Array<{ from: number; to: number }>
+  graphEdges?: Array<{ from: number; to: number; kind?: string }>
   /** Legacy: cuid нод — игнорируется при импорте */
   graphEdgesLegacy?: Array<{ fromNodeId: string; toNodeId: string }>
 }
@@ -177,8 +178,11 @@ export async function importProjectFromExport(
   }
 
   const graphNodeIds: string[] = []
+  const createdByIndex: (string | undefined)[] = []
   let graphNodeCount = 0
-  for (const gn of raw.graphNodes ?? []) {
+  const rawNodes = raw.graphNodes ?? []
+  for (let i = 0; i < rawNodes.length; i++) {
+    const gn = rawNodes[i]
     let refId: string | null = null
     if (gn.refType === 'task' && gn.taskNumber != null) {
       refId = numberToId.get(gn.taskNumber) ?? null
@@ -195,19 +199,30 @@ export async function importProjectFromExport(
         y: gn.y ?? 0,
         w: gn.w ?? undefined,
         h: gn.h ?? undefined,
-        text: gn.refType === 'note' ? gn.text ?? '' : null,
+        text: gn.refType === 'note' || gn.refType === 'group' ? gn.text ?? (gn.refType === 'group' ? 'Пачка' : '') : null,
       },
     })
+    createdByIndex[i] = node.id
     graphNodeIds.push(node.id)
     graphNodeCount += 1
+  }
+
+  for (let i = 0; i < rawNodes.length; i++) {
+    const parent = rawNodes[i].parent
+    const id = createdByIndex[i]
+    if (!id || typeof parent !== 'number') continue
+    const parentId = createdByIndex[parent]
+    if (!parentId || parentId === id) continue
+    await db.graphNode.update({ where: { id }, data: { parentId } }).catch(() => {})
   }
 
   for (const e of raw.graphEdges ?? []) {
     const fromId = graphNodeIds[e.from]
     const toId = graphNodeIds[e.to]
     if (!fromId || !toId) continue
+    const kind = e.kind === 'blocks' || e.kind === 'relates' ? e.kind : 'canvas'
     await db.graphEdge.create({
-      data: { projectId: project.id, fromNodeId: fromId, toNodeId: toId },
+      data: { projectId: project.id, fromNodeId: fromId, toNodeId: toId, kind },
     }).catch(() => {})
   }
 

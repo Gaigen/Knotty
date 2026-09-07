@@ -3,7 +3,8 @@
 export type TaskType = 'epic' | 'story' | 'task' | 'bug'
 export type Priority = 'low' | 'mid' | 'high' | 'crit'
 export type LinkType = 'blocks' | 'relates'
-export type GraphRefType = 'task' | 'attachment' | 'note'
+export type GraphRefType = 'task' | 'attachment' | 'note' | 'group'
+export type GraphCanvasEdgeType = LinkType | 'canvas'
 
 export interface UserDto {
   id: string
@@ -168,6 +169,7 @@ export interface GraphNodeDto {
   id: string
   refType: GraphRefType
   refId: string | null
+  parentId: string | null
   x: number
   y: number
   text: string | null
@@ -179,7 +181,7 @@ export interface GraphNodeDto {
 
 export interface GraphDto {
   nodes: GraphNodeDto[]
-  /** type 'canvas' — свободные рёбра между нодами (заметка/файл ↔ задача); blocks/relates — связи задач */
-  edges: { id: string; source: string; target: string; type: LinkType | 'canvas' }[]
+  /** canvas / relates / blocks на канвасе; blocks/relates задач — также в Link */
+  edges: { id: string; source: string; target: string; type: GraphCanvasEdgeType }[]
   hierarchy: { id: string; source: string; target: string }[]
 }

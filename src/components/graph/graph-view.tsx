@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow, ReactFlowProvider, Background, BackgroundVariant, MiniMap, Panel,
   useNodesState, useEdgesState, useReactFlow,
-  type Connection, type Edge, type Node, type NodeMouseHandler, type NodeTypes, type OnNodeDrag,
+  type Connection, type Edge, type Node, type NodeMouseHandler, type NodeTypes, type OnNodeDrag, type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useQueryClient } from '@tanstack/react-query'
@@ -32,15 +32,18 @@ import { AttachmentViewer } from '@/components/shared/attachment-viewer'
 import { MarkdownView, isMarkdownCheckboxInteraction } from '@/components/shared/markdown'
 import {
   useCreateLink, useCreateGraphNode, useDeleteGraphNode, useGraph, useSaveGraphPositions, useTasks, useUpdateGraphNode, useUpdateTask,
-  useCreateGraphEdge, useDeleteGraphEdge, useBulkAddGraphTasks, attachmentFileUrl,
+  useCreateGraphEdge, useDeleteGraphEdge, useBulkAddGraphTasks, useWrapGraphGroup, attachmentFileUrl,
 } from '@/lib/api'
 import { PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
 import { layoutDependencyStrip, layoutHierarchyColumn, layoutTree } from '@/lib/graph-dagre-layout'
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
 import { graphEdgeMarkers } from '@/lib/graph-edge-theme'
+import { DEFAULT_GROUP_SIZE, hitTestGroup, toAbsolute, toRelative } from '@/lib/graph-grouping'
+import { dropReroutedSelfLoops, hiddenByGroupCollapse, hiddenByTreeCollapse, rerouteCollapsedEdges } from '@/lib/graph-collapse'
 import { graphAttachmentDefaultSize, resolveAttachmentPreviewKind } from '@/lib/attachment-preview'
 import { cn } from '@/lib/utils'
 import { AttachmentNodeCard, NoteNodeCard, TaskNodeCard, type AttachmentNodeData, type NoteNodeData, type TaskNodeData } from '@/components/graph/nodes'
+import { GroupNodeCard, type GroupNodeData } from '@/components/graph/graph-group-node'
 import { KnottyEdge, type KnottyEdgeData } from '@/components/graph/graph-edges'
 import { GraphOffCanvasPanel, GRAPH_TASK_DRAG_TYPE } from '@/components/graph/graph-off-canvas-panel'
 import { GraphFilterCheck, GraphToolbarBtn } from '@/components/graph/graph-toolbar-bits'
@@ -53,6 +56,7 @@ const nodeTypes: NodeTypes = {
   taskRF: TaskNodeCard,
   noteRF: NoteNodeCard,
   attachmentRF: AttachmentNodeCard,
+  groupRF: GroupNodeCard,
 }
 
 const edgeTypes = { knotty: KnottyEdge }
@@ -76,7 +80,7 @@ export function GraphView({
 }) {
   return (
     <ReactFlowProvider>
-      <GraphCanvas project={project} users={users} onOpenTask={onOpenTask} />
+      <GraphCanvas key={project.id} project={project} users={users} onOpenTask={onOpenTask} />
     </ReactFlowProvider>
   )
 }
@@ -129,6 +133,36 @@ function persistGraphFilters(projectId: string, filters: GraphFilters) {
   } catch {}
 }
 
+interface GraphCollapsed {
+  groups: string[]
+  trees: string[]
+}
+
+function loadCollapsed(projectId: string): GraphCollapsed {
+  try {
+    const raw = prefGet(prefKey(`graphCollapsed:${projectId}`))
+    if (!raw) return { groups: [], trees: [] }
+    const p = JSON.parse(raw) as Partial<GraphCollapsed>
+    return { groups: p.groups ?? [], trees: p.trees ?? [] }
+  } catch {
+    return { groups: [], trees: [] }
+  }
+}
+
+function persistCollapsed(projectId: string, v: GraphCollapsed) {
+  prefSet(prefKey(`graphCollapsed:${projectId}`), JSON.stringify(v))
+}
+
+function loadViewport(projectId: string): Viewport | undefined {
+  try {
+    const raw = prefGet(prefKey(`graphViewport:${projectId}`))
+    if (!raw) return undefined
+    const v = JSON.parse(raw) as Viewport
+    if (typeof v.x === 'number' && typeof v.y === 'number' && typeof v.zoom === 'number') return v
+  } catch {}
+  return undefined
+}
+
 function GraphCanvas({
   project,
   users,
@@ -148,6 +182,7 @@ function GraphCanvas({
   const createLink = useCreateLink()
   const createCanvasEdge = useCreateGraphEdge()
   const deleteCanvasEdge = useDeleteGraphEdge()
+  const wrapGroup = useWrapGraphGroup()
   const updateTask = useUpdateTask()
   const qc = useQueryClient()
   const updateTaskRef = useRef(updateTask)
@@ -177,7 +212,12 @@ function GraphCanvas({
   const [offCanvasOpen, setOffCanvasOpen] = useState(true)
   const [readOnly, setReadOnly] = useState(false)
   const [showMinimap, setShowMinimap] = useState(true)
-  const [connectDraft, setConnectDraft] = useState<{ from: string; to: string } | null>(null)
+  const [collapsed, setCollapsed] = useState<GraphCollapsed>(() => loadCollapsed(project.id))
+  const savedViewport = useMemo(() => loadViewport(project.id), [project.id])
+  useEffect(() => {
+    setCollapsed(loadCollapsed(project.id))
+  }, [project.id])
+  const [connectDraft, setConnectDraft] = useState<{ from: string; to: string; mode: 'tasks' | 'mixed' } | null>(null)
   const [addTaskOpen, setAddTaskOpen] = useState(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [newTaskType, setNewTaskType] = useState('task')
@@ -310,17 +350,38 @@ function GraphCanvas({
     }
   }, [])
 
-  // удаление ребра с кнопки ×: канвасные — GraphEdge, blocks/relates — Link
+  const toggleGroupCollapse = useCallback((nodeId: string) => {
+    setCollapsed((prev) => {
+      const groups = prev.groups.includes(nodeId)
+        ? prev.groups.filter((id) => id !== nodeId)
+        : [...prev.groups, nodeId]
+      const next = { ...prev, groups }
+      persistCollapsed(projectIdRef.current, next)
+      return next
+    })
+  }, [])
+
+  const toggleTreeCollapse = useCallback((nodeId: string) => {
+    setCollapsed((prev) => {
+      const trees = prev.trees.includes(nodeId)
+        ? prev.trees.filter((id) => id !== nodeId)
+        : [...prev.trees, nodeId]
+      const next = { ...prev, trees }
+      persistCollapsed(projectIdRef.current, next)
+      return next
+    })
+  }, [])
+
+  // удаление ребра с кнопки ×: edge-* — GraphEdge, link-* — Link
   const handleDeleteEdge = useCallback(
-    (edgeId: string, kind: KnottyEdgeData['kind']) => {
-      // мгновенно убираем из UI, сервер подтвердит рефетчем
+    (edgeId: string, _kind: KnottyEdgeData['kind']) => {
       setEdges((es) => es.filter((e) => e.id !== edgeId))
-      if (kind === 'canvas') {
+      if (edgeId.startsWith('edge-')) {
         deleteCanvasEdge.mutate(
           { id: edgeId.slice(5), projectId: project.id },
           { onError: (e) => toast.error(e.message) }
         )
-      } else {
+      } else if (edgeId.startsWith('link-')) {
         fetch(`/api/links/${edgeId.slice(5)}`, { method: 'DELETE' })
           .then(() => {
             qc.invalidateQueries({ queryKey: ['graph', project.id] })
@@ -369,11 +430,42 @@ function GraphCanvas({
     for (const n of graph.nodes) {
       if (n.refType === 'note') newServerText.set(n.id, n.text ?? '')
     }
+    const childCountByGroup = new Map<string, number>()
+    const treeChildOf = new Set<string>()
+    for (const n of graph.nodes) {
+      if (n.parentId) childCountByGroup.set(n.parentId, (childCountByGroup.get(n.parentId) ?? 0) + 1)
+    }
+    for (const h of graph.hierarchy) treeChildOf.add(h.source)
+
     const rfNodes: Node[] = graph.nodes.map((n) => {
+      const parentId = n.parentId ?? undefined
+      if (n.refType === 'group') {
+        return {
+          id: n.id,
+          type: 'groupRF',
+          position: { x: n.x, y: n.y },
+          style: { width: n.w ?? DEFAULT_GROUP_SIZE.w, height: n.h ?? DEFAULT_GROUP_SIZE.h },
+          zIndex: -1,
+          data: {
+            title: n.text?.trim() || 'Пачка',
+            childCount: childCountByGroup.get(n.id) ?? 0,
+            onResize: handleNodeResize,
+            onRename: (id: string, title: string) => updateNodeRef.current.mutate({ id, text: title }),
+            onToggleCollapse: toggleGroupCollapse,
+            onUngroup: (id: string) => {
+              if (confirm('Удалить рамку? Содержимое останется на канвасе.')) {
+                deleteNodeRef.current.mutate({ id, projectId: projectIdRef.current })
+              }
+            },
+            onDeleteNode: requestDeleteNode,
+          } as GroupNodeData,
+        }
+      }
       if (n.refType === 'task' && n.task) {
         return {
           id: n.id,
           type: 'taskRF',
+          parentId,
           position: { x: n.x, y: n.y },
           style: { width: n.w ?? 220, ...(n.h ? { height: n.h } : {}) },
           data: {
@@ -382,6 +474,8 @@ function GraphCanvas({
             onResize: handleNodeResize,
             onOpenTask: openTaskFromNode,
             onDeleteNode: requestDeleteNode,
+            hasTreeChildren: treeChildOf.has(n.id),
+            onToggleTreeCollapse: toggleTreeCollapse,
           } as TaskNodeData,
         }
       }
@@ -389,6 +483,7 @@ function GraphCanvas({
         return {
           id: n.id,
           type: 'noteRF',
+          parentId,
           position: { x: n.x, y: n.y },
           dragHandle: '.note-drag-handle',
           style: { width: n.w ?? 260, ...(n.h ? { height: n.h } : {}) },
@@ -414,6 +509,7 @@ function GraphCanvas({
       return {
         id: n.id,
         type: 'attachmentRF',
+        parentId,
         position: { x: n.x, y: n.y },
         dragHandle: '.attachment-drag-handle',
         style: { width: n.w ?? defaults.w, height: n.h ?? defaults.h },
@@ -461,8 +557,13 @@ function GraphCanvas({
       })
     }
 
+    const ordered = [...rfNodes].sort((a, b) => {
+      if (a.type === 'groupRF' && b.type !== 'groupRF') return -1
+      if (a.type !== 'groupRF' && b.type === 'groupRF') return 1
+      return 0
+    })
     setNodes((current) =>
-      rfNodes.map((nn) => {
+      ordered.map((nn) => {
         if (nn.type !== 'noteRF') return nn
         // сервер не менял текст с прошлого сника → уважаем локальную правку (печать без blur)
         if (prevServerText.get(nn.id) === newServerText.get(nn.id)) {
@@ -523,6 +624,22 @@ function GraphCanvas({
       for (const n of ns) if (!keep.has(n.id)) hidden.add(n.id)
     }
 
+    const groupHidden = hiddenByGroupCollapse(
+      ns.map((n) => ({ id: n.id, parentId: n.parentId })),
+      collapsed.groups
+    )
+    const treeHidden = hiddenByTreeCollapse(
+      es.filter((e) => e.id.startsWith('tree-')).map((e) => ({ source: e.source, target: e.target })),
+      collapsed.trees
+    )
+    for (const id of groupHidden) hidden.add(id)
+    for (const id of treeHidden) hidden.add(id)
+
+    const parentOf = new Map<string, string>()
+    for (const n of ns) {
+      if (n.parentId) parentOf.set(n.id, n.parentId)
+    }
+
     es = es.filter((e) => {
       const kind = (e.data as KnottyEdgeData | undefined)?.kind
       if (kind === 'tree') return filters.showHierarchy
@@ -532,7 +649,10 @@ function GraphCanvas({
       return true
     })
 
+    const collapseHidden = new Set<string>([...groupHidden, ...treeHidden])
+    es = rerouteCollapsedEdges(es, collapseHidden, parentOf)
     es = es.filter((e) => !hidden.has(e.source) && !hidden.has(e.target))
+    es = dropReroutedSelfLoops(es)
 
     // подсветка при наведении: связанные рёбра и ноды, остальное гаснет (ФТ-3.5)
     let related: Set<string> | null = null
@@ -546,10 +666,19 @@ function GraphCanvas({
 
     const dns: Node[] = ns
       .filter((n) => !hidden.has(n.id))
-      .map((n) => ({
-        ...n,
-        data: { ...n.data, dimmed: related ? !related.has(n.id) : false },
-      }))
+      .map((n) => {
+        const groupCollapsed = n.type === 'groupRF' && collapsed.groups.includes(n.id)
+        return {
+          ...n,
+          style: groupCollapsed ? { ...n.style, height: 48 } : n.style,
+          data: {
+            ...n.data,
+            dimmed: related ? !related.has(n.id) : false,
+            collapsed: groupCollapsed,
+            treeCollapsed: n.type === 'taskRF' && collapsed.trees.includes(n.id),
+          },
+        }
+      })
     const des: Edge[] = es.map((e) => ({
       ...e,
       style: {
@@ -559,7 +688,7 @@ function GraphCanvas({
       labelStyle: e.labelStyle,
     }))
     return { displayNodes: dns, displayEdges: des }
-  }, [nodes, edges, filters, hoveredId])
+  }, [nodes, edges, filters, hoveredId, collapsed])
 
   const searchableCanvasNodes = useMemo(() => {
     return nodes
@@ -575,10 +704,63 @@ function GraphCanvas({
 
   // сохранение позиций (ФТ-3.2)
   const onNodeDragStop = useCallback<OnNodeDrag<Node>>(
-    (_e, node) => {
-      updateNode.mutate({ id: node.id, x: node.position.x, y: node.position.y })
+    (e, node) => {
+      const all = getNodes()
+      const byId = new Map(all.map((n) => [n.id, n]))
+      const moving = all.filter((n) => n.selected)
+      const pack = moving.length > 1 ? moving : [node]
+      const movingIds = new Set(pack.map((n) => n.id))
+      const groupBoxes = all
+        .filter((n) => n.type === 'groupRF' && !movingIds.has(n.id))
+        .map((n) => {
+          const w = (n.measured?.width ?? n.width ?? Number(n.style?.width) ?? DEFAULT_GROUP_SIZE.w) as number
+          const h = (n.measured?.height ?? n.height ?? Number(n.style?.height) ?? DEFAULT_GROUP_SIZE.h) as number
+          return { id: n.id, x: n.position.x, y: n.position.y, w, h }
+        })
+
+      const point =
+        'clientX' in e
+          ? { x: e.clientX, y: e.clientY }
+          : e.changedTouches[0]
+            ? { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY }
+            : null
+      const flow = point ? screenToFlowPosition(point) : node.position
+      const hit = readOnly || !point ? null : hitTestGroup(flow, groupBoxes)
+
+      function worldOf(n: Node): { x: number; y: number } {
+        if (!n.parentId) return n.position
+        const p = byId.get(n.parentId)
+        if (!p) return n.position
+        return toAbsolute(n.position, p.position)
+      }
+
+      const positions = pack.map((n) => {
+        if (n.type === 'groupRF') {
+          return { id: n.id, x: n.position.x, y: n.position.y }
+        }
+        const world = worldOf(n)
+        if (hit) {
+          const g = byId.get(hit)!
+          const rel = toRelative(world, g.position)
+          return { id: n.id, x: rel.x, y: rel.y, parentId: hit }
+        }
+        return { id: n.id, x: world.x, y: world.y, parentId: null as string | null }
+      })
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          const p = positions.find((x) => x.id === n.id)
+          if (!p) return n
+          return {
+            ...n,
+            position: { x: p.x, y: p.y },
+            parentId: 'parentId' in p ? p.parentId ?? undefined : n.parentId,
+          }
+        })
+      )
+      savePositions.mutate({ projectId: project.id, positions })
     },
-    [updateNode]
+    [getNodes, screenToFlowPosition, readOnly, setNodes, savePositions, project.id]
   )
 
   // создание связи хэндлами (ФТ-3.4): задача→задача — выбор типа (blocks/relates,
@@ -589,11 +771,15 @@ function GraphCanvas({
       const src = nodes.find((n) => n.id === c.source)
       const tgt = nodes.find((n) => n.id === c.target)
       if (src?.type === 'taskRF' && tgt?.type === 'taskRF') {
-        setConnectDraft({ from: c.source, to: c.target })
+        setConnectDraft({ from: c.source, to: c.target, mode: 'tasks' })
+        return
+      }
+      if (src?.type === 'groupRF' || tgt?.type === 'groupRF') {
+        setConnectDraft({ from: c.source, to: c.target, mode: 'mixed' })
         return
       }
       createCanvasEdge.mutate(
-        { projectId: project.id, fromNodeId: c.source, toNodeId: c.target },
+        { projectId: project.id, fromNodeId: c.source, toNodeId: c.target, kind: 'canvas' },
         {
           onSuccess: () => toast.success('Связь нод создана'),
           onError: (e) => toast.error(e.message),
@@ -603,8 +789,25 @@ function GraphCanvas({
     [nodes, project.id, createCanvasEdge]
   )
 
-  function submitConnect(type: 'blocks' | 'relates') {
+  function submitConnect(type: 'blocks' | 'relates' | 'canvas') {
     if (!connectDraft) return
+    if (connectDraft.mode === 'mixed' || type === 'canvas') {
+      createCanvasEdge.mutate(
+        { projectId: project.id, fromNodeId: connectDraft.from, toNodeId: connectDraft.to, kind: type },
+        {
+          onSuccess: () => {
+            toast.success(type === 'blocks' ? 'Связь «блокирует» создана' : type === 'relates' ? 'Связь «связана с» создана' : 'Связь нод создана')
+            setConnectDraft(null)
+          },
+          onError: (e) => {
+            toast.error(e.message)
+            setConnectDraft(null)
+          },
+        }
+      )
+      return
+    }
+    if (type !== 'blocks' && type !== 'relates') return
     const fromTaskId = nodeRefToId.get(connectDraft.from)
     const toTaskId = nodeRefToId.get(connectDraft.to)
     if (!fromTaskId || !toTaskId) {
@@ -620,7 +823,7 @@ function GraphCanvas({
           setConnectDraft(null)
         },
         onError: (e) => {
-          toast.error(e.message) // [v1.1] понятная ошибка цикла (п. 4.1.3)
+          toast.error(e.message)
           setConnectDraft(null)
         },
       }
@@ -659,7 +862,9 @@ function GraphCanvas({
             ? 'ноду (задача останется в проекте)'
             : nodes[0].type === 'noteRF'
               ? 'заметку'
-              : 'ноду файла'
+              : nodes[0].type === 'groupRF'
+                ? 'рамку (содержимое останется)'
+                : 'ноду файла'
           : `${nodes.length} нод`
       const ok = confirm(`Удалить ${label} с канваса?`)
       if (ok) {
@@ -747,7 +952,7 @@ function GraphCanvas({
   }, [searchOpen])
 
   /** Создать элемент по ПКМ: задача/заметка/файл появляется в точке клика */
-  function ctxCreate(kind: 'newTask' | 'pickTask' | 'note' | 'file' | 'noteTpl', noteTplId?: string) {
+  function ctxCreate(kind: 'newTask' | 'pickTask' | 'note' | 'file' | 'noteTpl' | 'group', noteTplId?: string) {
     if (!ctxMenu) return
     pendingPosRef.current = ctxMenu.flow
     closeCtxMenu()
@@ -755,7 +960,35 @@ function GraphCanvas({
     else if (kind === 'pickTask') setPickTaskOpen(true)
     else if (kind === 'note') createNote()
     else if (kind === 'noteTpl' && noteTplId) createNote(NOTE_TEMPLATES.find((t) => t.id === noteTplId)?.text ?? '')
+    else if (kind === 'group') {
+      const pos = pendingPosRef.current ?? centerPosition()
+      pendingPosRef.current = null
+      createNode.mutate({
+        projectId: project.id,
+        refType: 'group',
+        x: pos.x,
+        y: pos.y,
+        text: 'Пачка',
+        w: DEFAULT_GROUP_SIZE.w,
+        h: DEFAULT_GROUP_SIZE.h,
+      })
+    }
     else fileInputRef.current?.click()
+  }
+
+  function wrapSelectedNodes() {
+    const ids = nodes.filter((n) => n.selected && n.type !== 'groupRF').map((n) => n.id)
+    if (ids.length < 1) {
+      toast.message('Выделите ноды для рамки')
+      return
+    }
+    wrapGroup.mutate(
+      { projectId: project.id, nodeIds: ids },
+      {
+        onSuccess: () => toast.success('Рамка создана'),
+        onError: (e) => toast.error(e.message),
+      }
+    )
   }
 
   /** Быстрая правка поля задачи прямо из ПКМ (одна нода-задача или все выделенные) */
@@ -818,7 +1051,13 @@ function GraphCanvas({
     }
 
     if (action === 'delete') {
-      const label = node.type === 'taskRF' ? 'ноду (задача останется в проекте)' : node.type === 'noteRF' ? 'заметку' : 'ноду файла'
+      const label = node.type === 'taskRF'
+        ? 'ноду (задача останется в проекте)'
+        : node.type === 'noteRF'
+          ? 'заметку'
+          : node.type === 'groupRF'
+            ? 'рамку (содержимое останется)'
+            : 'ноду файла'
       requestDeleteNode(node.id, label)
       return
     }
@@ -1040,7 +1279,13 @@ function GraphCanvas({
         connectionRadius={32}
         snapToGrid={snap}
         snapGrid={[10, 10]}
-        fitView
+        fitView={!savedViewport}
+        defaultViewport={savedViewport}
+        onMoveEnd={(_, vp) => {
+          try {
+            prefSet(prefKey(`graphViewport:${project.id}`), JSON.stringify({ x: vp.x, y: vp.y, zoom: vp.zoom }))
+          } catch {}
+        }}
         fitViewOptions={{ padding: 0.25, maxZoom: 1 }}
         minZoom={0.1}
         maxZoom={2.5}
@@ -1085,6 +1330,22 @@ function GraphCanvas({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => createNote()}>
                   <StickyNote className="h-4 w-4" /> Заметка
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    const pos = centerPosition()
+                    createNode.mutate({
+                      projectId: project.id,
+                      refType: 'group',
+                      x: pos.x,
+                      y: pos.y,
+                      text: 'Пачка',
+                      w: DEFAULT_GROUP_SIZE.w,
+                      h: DEFAULT_GROUP_SIZE.h,
+                    })
+                  }}
+                >
+                  <BoxSelect className="h-4 w-4" /> Рамка
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <Upload className="h-4 w-4" /> Загрузить файл
@@ -1279,6 +1540,15 @@ function GraphCanvas({
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
+                onClick={() => wrapSelectedNodes()}
+                title="Объединить в рамку"
+              >
+                <BoxSelect className="h-3.5 w-3.5" /> Рамка
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
                 onClick={() => autoLayoutTree()}
                 title="Раскладка дерева (иерархия)"
               >
@@ -1445,6 +1715,14 @@ function GraphCanvas({
                           Выделено: {selectedCnt}
                         </div>
                         <CtxItem
+                          icon={<BoxSelect className="h-3.5 w-3.5" />}
+                          label="Объединить в рамку"
+                          onClick={() => {
+                            closeCtxMenu()
+                            wrapSelectedNodes()
+                          }}
+                        />
+                        <CtxItem
                           icon={<Trash2 className="h-3.5 w-3.5" />}
                           label={`Удалить выбранные (${selectedCnt})`}
                           danger
@@ -1475,6 +1753,7 @@ function GraphCanvas({
                   ))}
                 </CtxSubmenu>
                 <CtxItem icon={<Upload className="h-3.5 w-3.5" />} label="Загрузить файл здесь…" onClick={() => ctxCreate('file')} />
+                <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label="Рамка здесь…" onClick={() => ctxCreate('group')} />
                 <CtxSeparator />
                 <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label="Выделить всё" onClick={ctxSelectAll} />
                 <CtxItem icon={<GitBranch className="h-3.5 w-3.5" />} label="Дерево" onClick={() => { closeCtxMenu(); autoLayoutTree() }} />
@@ -1500,21 +1779,45 @@ function GraphCanvas({
 
       {/* Выбор типа связи при протягивании от ноды к ноде (ФТ-3.4) */}
       <Dialog open={!!connectDraft} onOpenChange={(v) => !v && setConnectDraft(null)}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className={cn('sm:max-w-sm', connectDraft?.mode === 'mixed' && 'sm:max-w-lg')}>
           <DialogHeader>
             <DialogTitle>Тип связи</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-2 py-1">
-            <Button variant="outline" className="h-auto flex-col gap-1 py-3" onClick={() => submitConnect('blocks')}>
-              <span className="text-lg">→</span>
-              <span className="text-sm font-medium">Блокирует</span>
-              <span className="text-xs text-muted-foreground">стрелка по направлению</span>
+          <div
+            className={cn(
+              'grid gap-2 py-1',
+              connectDraft?.mode === 'mixed' ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'
+            )}
+          >
+            <Button
+              variant="outline"
+              className="h-auto min-w-0 w-full shrink whitespace-normal flex-col items-center gap-1 px-2 py-3 text-center"
+              onClick={() => submitConnect('blocks')}
+            >
+              <span className="text-lg leading-none">→</span>
+              <span className="w-full text-sm font-medium">Блокирует</span>
+              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">стрелка по направлению</span>
             </Button>
-            <Button variant="outline" className="h-auto flex-col gap-1 py-3" onClick={() => submitConnect('relates')}>
-              <span className="text-lg">↔</span>
-              <span className="text-sm font-medium">Связана с</span>
-              <span className="text-xs text-muted-foreground">без направления</span>
+            <Button
+              variant="outline"
+              className="h-auto min-w-0 w-full shrink whitespace-normal flex-col items-center gap-1 px-2 py-3 text-center"
+              onClick={() => submitConnect('relates')}
+            >
+              <span className="text-lg leading-none">↔</span>
+              <span className="w-full text-sm font-medium">Связана с</span>
+              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">без направления</span>
             </Button>
+            {connectDraft?.mode === 'mixed' && (
+              <Button
+                variant="outline"
+                className="h-auto min-w-0 w-full shrink whitespace-normal flex-col items-center gap-1 px-2 py-3 text-center"
+                onClick={() => submitConnect('canvas')}
+              >
+                <span className="text-lg leading-none">~</span>
+                <span className="w-full text-sm font-medium">Просто связь</span>
+                <span className="w-full text-balance text-xs leading-snug text-muted-foreground">визуально</span>
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>
