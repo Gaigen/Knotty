@@ -24,7 +24,7 @@ export function subscribeProject(projectId: string, listener: Listener): () => v
 /** Уведомить всех SSE-подписчиков проекта об изменении данных */
 export function publishProjectChange(
   projectId: string,
-  detail: { taskId?: string; taskIds?: string[] } = {}
+  detail: { taskId?: string; taskIds?: string[]; scope?: 'full' | 'task' | 'graph' | 'none' } = {}
 ) {
   const msg: ProjectRealtimeMessage = { v: 1, at: Date.now(), projectId, ...detail }
   for (const listener of channels().get(projectId) ?? []) {

@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import { publishProjectChange } from '@/lib/server/realtime'
 
 type ActivityEvent =
   | 'created'
@@ -63,6 +62,5 @@ export async function logActivity(
   })
   if (task) {
     await db.project.update({ where: { id: task.projectId }, data: { updatedAt: new Date() } }).catch(() => {})
-    publishProjectChange(task.projectId, { taskId })
   }
 }

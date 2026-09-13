@@ -7,4 +7,6 @@ export type ProjectRealtimeMessage = {
   hello?: boolean
   taskId?: string
   taskIds?: string[]
+  /** full — список/канбан/граф; task — панель задачи; graph — канвас; none — без refetch */
+  scope?: 'full' | 'task' | 'graph' | 'none'
 }

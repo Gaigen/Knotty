@@ -1,6 +1,12 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  graphEchoKey,
+  projectEchoKey,
+  stampLocalEcho,
+  taskEchoKey,
+} from '@/lib/mutation-echo'
 import type {
   AttachmentDto, CommentDto, GraphDto, ProjectDetailDto, ProjectSummaryDto, SessionUserDto, TaskFullDto, TaskRowDto, UserDto,
 } from '@/lib/types'
@@ -64,6 +70,18 @@ export async function logoutRequest(): Promise<void> {
   await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
 }
 
+export function useUpdateMyProfile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { name?: string; email?: string; avatarUrl?: string | null }) =>
+      apiFetch<SessionUserDto>('/api/account/profile', { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: (user) => {
+      qc.setQueryData(['me'], { user })
+      qc.invalidateQueries({ queryKey: ['users'] })
+    },
+  })
+}
+
 export function useChangeMyPassword() {
   return useMutation({
     mutationFn: (body: { currentPassword: string; newPassword: string }) =>
@@ -118,7 +136,22 @@ export function useRevealApiToken() {
  * Инвалидация всех скоупов, зависящих от задач проекта (п. 1.2 ТЗ):
  * одно ядро данных — список, канбан, граф и панель обновятся без ручной синхронизации.
  */
-export function invalidateTaskScopes(qc: QueryClient, projectId?: string, taskId?: string, relatedTaskIds?: string[]) {
+export function invalidateTaskScopes(
+  qc: QueryClient,
+  projectId?: string,
+  taskId?: string,
+  relatedTaskIds?: string[],
+  scope: 'full' | 'task' | 'graph' | 'none' = 'full'
+) {
+  if (scope === 'none') return
+  if (scope === 'graph') {
+    if (projectId) qc.invalidateQueries({ queryKey: ['graph', projectId] })
+    return
+  }
+  if (scope === 'task') {
+    if (taskId) qc.invalidateQueries({ queryKey: ['task', taskId] })
+    return
+  }
   if (projectId) {
     qc.invalidateQueries({ queryKey: ['tasks', projectId] })
     qc.invalidateQueries({ queryKey: ['project', projectId] })
@@ -306,6 +339,11 @@ export function useCreateTask() {
   })
 }
 
+function isDescriptionOnlyPatch(vars: Record<string, unknown>): boolean {
+  const keys = Object.keys(vars).filter((k) => k !== 'id' && k !== 'projectId')
+  return keys.length === 1 && keys[0] === 'description'
+}
+
 export function useUpdateTask() {
   const qc = useQueryClient()
   return useMutation({
@@ -323,8 +361,25 @@ export function useUpdateTask() {
       parentId?: string | null
       boardOrder?: string
     }) => apiFetch<TaskFullDto>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    onSuccess: (task) => {
+    onMutate: async (vars) => {
+      stampLocalEcho(taskEchoKey(vars.id))
+      if (vars.projectId) stampLocalEcho(projectEchoKey(vars.projectId))
+      if (!isDescriptionOnlyPatch(vars as Record<string, unknown>) || vars.description === undefined) {
+        return
+      }
+      await qc.cancelQueries({ queryKey: ['task', vars.id] })
+      const prev = qc.getQueryData<TaskFullDto>(['task', vars.id])
+      if (prev) {
+        qc.setQueryData(['task', vars.id], { ...prev, description: vars.description })
+      }
+      return { prev }
+    },
+    onError: (_e, vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['task', vars.id], ctx.prev)
+    },
+    onSuccess: (task, vars) => {
       qc.setQueryData(['task', task.id], task)
+      if (isDescriptionOnlyPatch(vars as Record<string, unknown>)) return
       invalidateTaskScopes(qc, task.projectId, task.id, task.parentId ? [task.parentId] : undefined)
     },
   })
@@ -457,9 +512,8 @@ export function useBulkAddGraphTasks() {
 }
 
 export function useUpdateGraphNode() {
-  const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: {
+    mutationFn: ({ id, projectId, ...body }: {
       id: string
       projectId?: string
       x?: number
@@ -471,6 +525,9 @@ export function useUpdateGraphNode() {
       parentId?: string | null
     }) =>
       apiFetch<{ ok: boolean }>(`/api/graph/nodes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onMutate: (vars) => {
+      if (vars.projectId) stampLocalEcho(graphEchoKey(vars.projectId))
+    },
   })
 }
 
@@ -493,6 +550,9 @@ export function useSaveGraphPositions() {
       positions: { id: string; x: number; y: number; parentId?: string | null }[]
     }) =>
       apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/graph`, { method: 'PATCH', body: JSON.stringify({ positions }) }),
+    onMutate: (vars) => {
+      stampLocalEcho(graphEchoKey(vars.projectId))
+    },
   })
 }
 

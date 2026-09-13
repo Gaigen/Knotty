@@ -4,6 +4,7 @@ import type { LinkType } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { ApiError, assertLinkAllowed } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { ensureTaskGraphNodes } from '@/lib/server/graph-nodes'
 
 type Params = { params: Promise<{ id: string }> }
@@ -54,6 +55,9 @@ export async function POST(req: Request, { params }: Params) {
     })
     await logActivity(fromTaskId, user.id, 'linked', { type, otherKey: toTask ? `${toTask.project.key}-${toTask.number}` : null, direction: 'out' })
     await logActivity(toTaskId, user.id, 'linked', { type, otherKey: null, direction: 'in' })
+    if (fromTask) {
+      publishProjectChange(fromTask.projectId, { taskId: fromTaskId, taskIds: [toTaskId], scope: 'full' })
+    }
 
     return Response.json(
       { id: link.id, type: link.type, fromTaskId, toTaskId, graphNodesAdded },

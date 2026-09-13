@@ -3,6 +3,7 @@ import { MAX_TASK_TOTAL_MB } from '@/lib/config'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { ApiError } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 import { storeFile } from '@/lib/server/storage'
 import type { AttachmentDto } from '@/lib/types'
 
@@ -56,6 +57,7 @@ export async function POST(req: Request, { params }: Params) {
         createdAt: attachment.createdAt.toISOString(),
       })
     }
+    publishProjectChange(task.projectId, { taskId: id, scope: 'task' })
     return Response.json(created, { status: 201 })
   } catch (e) {
     return jsonError(e)

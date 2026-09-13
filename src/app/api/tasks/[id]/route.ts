@@ -341,7 +341,11 @@ export async function PATCH(req: Request, { params }: Params) {
       await logActivity(id, user.id, 'status_changed', { old: oldStatus?.name, new: newStatus?.name })
     }
 
-    publishProjectChange(task.projectId, { taskId: id })
+    const descriptionOnly = Object.keys(data).length === 1 && 'description' in data
+    publishProjectChange(task.projectId, {
+      taskId: id,
+      scope: descriptionOnly ? 'none' : 'full',
+    })
 
     return Response.json(await buildFull(id))
   } catch (e) {

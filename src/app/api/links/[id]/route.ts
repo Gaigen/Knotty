@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { ApiError } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -20,6 +21,11 @@ export async function DELETE(_req: Request, { params }: Params) {
     await db.link.delete({ where: { id } })
     await logActivity(link.fromTask.id, user.id, 'unlinked', { type: link.type, otherKey: `${link.toTask.project.key}-${link.toTask.number}` })
     await logActivity(link.toTask.id, user.id, 'unlinked', { type: link.type, otherKey: `${link.fromTask.project.key}-${link.fromTask.number}` })
+    publishProjectChange(link.fromTask.projectId, {
+      taskId: link.fromTask.id,
+      taskIds: [link.toTask.id],
+      scope: 'full',
+    })
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { ApiError } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
+import { publishProjectChange } from '@/lib/server/realtime'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -14,11 +15,12 @@ export async function POST(req: Request, { params }: Params) {
     if (!text) throw new ApiError('Комментарий не может быть пустым')
     if (text.length > 20000) throw new ApiError('Комментарий слишком длинный')
 
-    const task = await db.task.findUnique({ where: { id }, select: { id: true } })
+    const task = await db.task.findUnique({ where: { id }, select: { id: true, projectId: true } })
     if (!task) throw new ApiError('Задача не найдена', 404)
 
     const comment = await db.comment.create({ data: { taskId: id, authorId: user.id, body: text } })
     await logActivity(id, user.id, 'commented', { commentId: comment.id })
+    publishProjectChange(task.projectId, { taskId: id, scope: 'task' })
     return Response.json(
       {
         id: comment.id,

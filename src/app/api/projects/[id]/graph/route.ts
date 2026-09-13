@@ -31,10 +31,12 @@ export async function GET(_req: Request, { params }: Params) {
     ])
 
     const taskById = new Map(tasks.map((t) => [t.id, t]))
+    const doneTaskIds = new Set(tasks.filter((t) => t.status.category === 3).map((t) => t.id))
     const blockedSet = collectBlockedTaskIds({
       links,
       graphEdges: canvasEdgeRows,
       nodes: nodeRows,
+      doneTaskIds,
     })
     const attachById = new Map(attachments.map((a) => [a.id, a]))
     const commentCounts = await db.comment.groupBy({ by: ['taskId'], where: { task: { projectId } }, _count: { _all: true } })
@@ -158,7 +160,7 @@ export async function PATCH(req: Request, { params }: Params) {
         })
       )
     )
-    publishProjectChange(projectId)
+    publishProjectChange(projectId, { scope: 'graph' })
     return Response.json({ ok: true })
   } catch (e) {
     return jsonError(e)

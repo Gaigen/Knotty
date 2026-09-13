@@ -45,7 +45,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (Object.keys(data).length === 0) return Response.json({ ok: true })
     const updated = await db.graphNode.update({ where: { id }, data })
-    publishProjectChange(node.projectId)
+    publishProjectChange(node.projectId, { scope: 'graph' })
     return Response.json({ ok: true, node: { id: updated.id, x: updated.x, y: updated.y, text: updated.text } })
   } catch (e) {
     return jsonError(e)
