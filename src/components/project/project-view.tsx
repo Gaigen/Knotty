@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useProject, useUsers, copyToClipboard, useUpdateProject } from '@/lib/api'
+import { useProject, useUsers, useMe, copyToClipboard, useUpdateProject } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { rememberLastProject, projectTaskUrl, type ProjectTab } from '@/lib/nav'
 import { prefKey, prefSet } from '@/lib/prefs'
@@ -28,6 +28,7 @@ import { DeleteProjectDialog } from '@/components/launcher/delete-project-dialog
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/bits'
 import { ThemeToggle } from '@/components/shared/theme-toggle'
+import { AccountMenu } from '@/components/auth/account-menu'
 import type { ProjectSummaryDto } from '@/lib/types'
 import { EMPTY_FILTERS, type FiltersState } from '@/components/project/filters'
 
@@ -43,6 +44,8 @@ export function ProjectView({
   const router = useRouter()
   const { data: project, isLoading, error } = useProject(projectId)
   const { data: users = [] } = useUsers()
+  const { data: meData } = useMe()
+  const me = meData?.user ?? null
   useProjectRealtime(projectId)
   const favMut = useUpdateProject()
 
@@ -200,8 +203,9 @@ export function ProjectView({
             </div>
 
             <ThemeToggle />
+            {me && <AccountMenu user={me} />}
 
-            <Button size="sm" className="ml-auto shrink-0 gap-1.5" onClick={() => setCreateOpen(true)}>
+            <Button size="sm" className="shrink-0 gap-1.5" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Задача</span>
             </Button>

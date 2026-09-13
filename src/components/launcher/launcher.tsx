@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import {
-  ArrowRight, FolderKanban, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Boxes, Copy, ExternalLink, Users, LogOut, KeyRound, ShieldCheck, Plug,
+  ArrowRight, FolderKanban, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Boxes, Copy, ExternalLink, Users,
 } from 'lucide-react'
 import { APP_NAME, APP_TAGLINE } from '@/lib/branding'
 import { KnottyMark } from '@/components/shared/knotty-mark'
@@ -16,15 +16,14 @@ import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { useProjects, useUpdateProject, useMe, logoutRequest } from '@/lib/api'
-import { useQueryClient } from '@tanstack/react-query'
+import { useProjects, useUpdateProject, useMe } from '@/lib/api'
 import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { projectUrl, getLastProjectId } from '@/lib/nav'
 import type { ProjectSummaryDto } from '@/lib/types'
 import { EmptyState } from '@/components/shared/bits'
-import { UserAvatar } from '@/components/shared/bits'
 import { ThemeToggle } from '@/components/shared/theme-toggle'
+import { AccountMenu } from '@/components/auth/account-menu'
 import { ProjectDialog } from '@/components/launcher/project-dialog'
 import { ImportProjectButton } from '@/components/launcher/import-project-button'
 import { DeleteProjectDialog } from '@/components/launcher/delete-project-dialog'
@@ -32,20 +31,15 @@ import {
   CtxBackdrop, CtxContainer, CtxItem, CtxSeparator, type CtxPos,
 } from '@/components/shared/context-menu-helpers'
 import { copyToClipboard } from '@/lib/api'
-import { ChangePasswordDialog } from '@/components/auth/change-password-dialog'
-import { ApiTokensDialog } from '@/components/auth/api-tokens-dialog'
 
 type SortMode = 'recent' | 'name' | 'count'
 
 export function Launcher() {
   const router = useRouter()
-  const qc = useQueryClient()
   const { data: projects = [], isLoading } = useProjects()
   const favMut = useUpdateProject()
   const { data: meData } = useMe()
   const me = meData?.user ?? null
-  const [changePwOpen, setChangePwOpen] = useState(false)
-  const [apiTokensOpen, setApiTokensOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('recent')
   const [lastProjectId, setLastProjectId] = useState<string | null>(null)
@@ -83,14 +77,6 @@ export function Launcher() {
     // избранное — всегда сверху (ФТ-1.4/1.5)
     return sorted.sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite))
   }, [projects, search, sort])
-
-  async function logout() {
-    await logoutRequest()
-    // полностью чистим кеш (сессия, проекты, задачи) — следующий пользователь
-    // не должен видеть данные предыдущего
-    qc.clear()
-    router.replace('/login')
-  }
 
   function openProject(p: ProjectSummaryDto) {
     let tab: 'tasks' | 'board' | 'graph' = 'tasks'
@@ -141,42 +127,7 @@ export function Launcher() {
             <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
               <Plus className="h-4 w-4" /> Проект
             </Button>
-            {me && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="gap-1.5 pl-1.5 pr-3"
-                    aria-label={`Аккаунт: ${me.name}`}
-                  >
-                    <UserAvatar user={me} size={24} />
-                    <span className="hidden max-w-[140px] truncate sm:inline">{me.name}</span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-2 py-1.5">
-                    <p className="truncate text-sm font-medium">{me.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{me.email}</p>
-                    {me.isAdmin && (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-primary">
-                        <ShieldCheck className="h-3 w-3" /> администратор
-                      </p>
-                    )}
-                  </div>
-                  <DropdownMenuSeparator className="my-1" />
-                  <DropdownMenuItem onSelect={() => setChangePwOpen(true)} className="gap-2">
-                    <KeyRound className="h-4 w-4" /> Сменить пароль
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setApiTokensOpen(true)} className="gap-2">
-                    <Plug className="h-4 w-4" /> API-токены
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="my-1" />
-                  <DropdownMenuItem onSelect={logout} className="gap-2 text-destructive focus:text-destructive">
-                    <LogOut className="h-4 w-4" /> Выйти
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            {me && <AccountMenu user={me} />}
           </div>
         </div>
       </header>
@@ -316,8 +267,6 @@ export function Launcher() {
         onCreated={(id) => router.push(projectUrl(id, 'tasks'))}
       />
       <ProjectDialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)} project={editTarget} />
-      <ChangePasswordDialog open={changePwOpen} onOpenChange={setChangePwOpen} hasPassword />
-      <ApiTokensDialog open={apiTokensOpen} onOpenChange={setApiTokensOpen} />
       <DeleteProjectDialog
         project={deleteTarget}
         onClose={() => setDeleteTarget(null)}
