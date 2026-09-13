@@ -555,7 +555,13 @@ function PanelDetailsCompact({
                 Изменить
               </Button>
             </div>
-            <MarkdownView source={task.description} />
+            <MarkdownView
+              source={task.description}
+              interactiveCheckboxes
+              onSourceChange={(next) => {
+                onPatch({ description: next }, { silent: true }).catch(() => {})
+              }}
+            />
           </div>
         )}
       </section>

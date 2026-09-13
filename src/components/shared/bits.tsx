@@ -63,7 +63,21 @@ export function UserAvatar({ user, size = 24, className }: { user?: UserDto | nu
     .join('')
     .toUpperCase()
   if (user?.avatarUrl) {
-    return <img src={user.avatarUrl} alt={user.name} width={size} height={size} className={cn('rounded-full object-cover', className)} style={{ width: size, height: size }} />
+    const isSvg = /\.svg(\?|$)/i.test(user.avatarUrl)
+    return (
+      <img
+        src={user.avatarUrl}
+        alt={user.name}
+        width={size}
+        height={size}
+        className={cn(
+          'rounded-full',
+          isSvg ? 'bg-muted object-contain p-0.5' : 'object-cover',
+          className
+        )}
+        style={{ width: size, height: size }}
+      />
+    )
   }
   return (
     <span

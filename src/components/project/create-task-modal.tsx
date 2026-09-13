@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarDays, Check, ChevronsUpDown, Network, UserCircle2, X } from 'lucide-react'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useCreateTask, useTasks, useUpdateProject } from '@/lib/api'
+import { useCreateTask, useMe, useTasks, useUpdateProject } from '@/lib/api'
 import { ALLOWED_CHILDREN, PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
 import { toDateInputValue } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -43,10 +43,11 @@ export function CreateTaskModal({
   onCreated: (taskId: string) => void
 }) {
   const { data: allTasks = [] } = useTasks(projectId)
+  const { data: meData } = useMe()
   const create = useCreateTask()
   const updateProject = useUpdateProject()
 
-  const me = users[0]
+  const me = meData?.user ?? null
   const [type, setType] = useState<string>('task')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -100,10 +101,6 @@ export function CreateTaskModal({
       toast.error('Введите название задачи')
       return
     }
-    // выбор галочки становится умолчанием для следующих задач (настройка проекта)
-    if (addToGraph !== autoGraph) {
-      updateProject.mutate({ id: projectId, autoGraph: addToGraph })
-    }
     create.mutate(
       {
         projectId,
@@ -120,6 +117,10 @@ export function CreateTaskModal({
       },
       {
         onSuccess: (task) => {
+          // выбор галочки становится умолчанием для следующих задач (настройка проекта)
+          if (addToGraph !== autoGraph) {
+            updateProject.mutate({ id: projectId, autoGraph: addToGraph })
+          }
           toast.success(`Задача ${task.key} создана`)
           onOpenChange(false)
           onCreated(task.id)

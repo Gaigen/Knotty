@@ -489,7 +489,13 @@ function DescriptionBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: R
         </Button>
       </div>
       {task.description.trim() ? (
-        <MarkdownView source={task.description} />
+        <MarkdownView
+          source={task.description}
+          interactiveCheckboxes
+          onSourceChange={(next) => {
+            onPatch({ description: next }, { silent: true }).catch(() => {})
+          }}
+        />
       ) : (
         <button
           type="button"

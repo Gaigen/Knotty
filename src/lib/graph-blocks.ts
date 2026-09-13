@@ -4,6 +4,8 @@ export interface BlocksGraphInput {
   links: { fromTaskId: string; toTaskId: string; type: string }[]
   graphEdges: { fromNodeId: string; toNodeId: string; kind: string }[]
   nodes: { id: string; refType: string; refId: string | null }[]
+  /** Задачи в статусе «готово» — не блокируют и сами не считаются заблокированными */
+  doneTaskIds?: Set<string>
 }
 
 export function taskEndpoint(taskId: string): BlockEndpoint {
@@ -21,16 +23,22 @@ export function nodeEndpoint(node: { id: string; refType: string; refId: string 
 }
 
 export function collectBlockedTaskIds(input: BlocksGraphInput): Set<string> {
+  const done = input.doneTaskIds ?? new Set<string>()
   const blocked = new Set<string>()
   for (const l of input.links) {
-    if (l.type === 'blocks') blocked.add(l.toTaskId)
+    if (l.type === 'blocks' && !done.has(l.fromTaskId)) blocked.add(l.toTaskId)
   }
   const byId = new Map(input.nodes.map((n) => [n.id, n]))
   for (const e of input.graphEdges) {
     if (e.kind !== 'blocks') continue
+    const from = byId.get(e.fromNodeId)
     const target = byId.get(e.toNodeId)
-    if (target?.refType === 'task' && target.refId) blocked.add(target.refId)
+    if (target?.refType !== 'task' || !target.refId) continue
+    const fromTaskId = from?.refType === 'task' ? from.refId : null
+    if (fromTaskId && done.has(fromTaskId)) continue
+    blocked.add(target.refId)
   }
+  for (const id of done) blocked.delete(id)
   return blocked
 }
 

@@ -39,6 +39,7 @@ import { layoutDependencyStrip, layoutHierarchyColumn, layoutTree } from '@/lib/
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
 import { graphEdgeMarkers } from '@/lib/graph-edge-theme'
 import { DEFAULT_GROUP_SIZE, hitTestGroup, toAbsolute, toRelative } from '@/lib/graph-grouping'
+import { normalizeGroupColor } from '@/lib/graph-group-color'
 import { dropReroutedSelfLoops, hiddenByGroupCollapse, hiddenByTreeCollapse, rerouteCollapsedEdges } from '@/lib/graph-collapse'
 import { graphAttachmentDefaultSize, resolveAttachmentPreviewKind } from '@/lib/attachment-preview'
 import { cn } from '@/lib/utils'
@@ -216,6 +217,8 @@ function GraphCanvas({
     setFiltersState(loadGraphFilters(project.id))
   }, [project.id])
   const [searchOpen, setSearchOpen] = useState(false)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [offCanvasOpen, setOffCanvasOpen] = useState(true)
   const [readOnly, setReadOnly] = useState(false)
   const [showMinimap, setShowMinimap] = useState(true)
@@ -440,14 +443,14 @@ function GraphCanvas({
           historyRecordingRef.current = false
           markLocalGraphChange()
           applySizeEntry(before)
-          await updateNode.mutateAsync({ id: before.id, w: before.w, h: before.h })
+          await updateNode.mutateAsync({ id: before.id, projectId: project.id, w: before.w, h: before.h })
           historyRecordingRef.current = true
         },
         redo: async () => {
           historyRecordingRef.current = false
           markLocalGraphChange()
           applySizeEntry(after)
-          await updateNode.mutateAsync({ id: after.id, w: after.w, h: after.h })
+          await updateNode.mutateAsync({ id: after.id, projectId: project.id, w: after.w, h: after.h })
           historyRecordingRef.current = true
         },
       })
@@ -489,6 +492,7 @@ function GraphCanvas({
       if (snap.parentId) {
         await updateNode.mutateAsync({
           id: created.id,
+          projectId: project.id,
           parentId: snap.parentId,
           x: snap.x,
           y: snap.y,
@@ -683,6 +687,102 @@ function GraphCanvas({
   useEffect(() => {
     updateNodeRef.current = updateNode
   }, [updateNode])
+  const patchGraphNode = useCallback(
+    (
+      body: {
+        id: string
+        x?: number
+        y?: number
+        text?: string
+        color?: string | null
+        w?: number
+        h?: number
+        parentId?: string | null
+      },
+      opts?: { onSuccess?: () => void }
+    ) => {
+      updateNodeRef.current.mutate({ projectId: project.id, ...body }, opts)
+    },
+    [project.id]
+  )
+
+  const groupColorCommittedRef = useRef<Map<string, string>>(new Map())
+  useEffect(() => {
+    for (const n of graph?.nodes ?? []) {
+      if (n.refType === 'group') groupColorCommittedRef.current.set(n.id, normalizeGroupColor(n.color))
+    }
+  }, [graph])
+
+  const applyGroupColor = useCallback(
+    (nodeId: string, color: string | null | undefined, markCommitted = false) => {
+      const hex = normalizeGroupColor(color)
+      setNodes((nds) =>
+        nds.map((x) =>
+          x.id === nodeId
+            ? { ...x, data: { ...x.data, color: hex, ...(markCommitted ? { committedColor: hex } : {}) } }
+            : x
+        )
+      )
+    },
+    [setNodes]
+  )
+
+  const pushColorHistory = useCallback(
+    (nodeId: string, before: string, after: string) => {
+      if (!historyRecordingRef.current || readOnly || before === after) return
+      graphHistory.push({
+        label: 'цвет рамки',
+        undo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          groupColorCommittedRef.current.set(nodeId, before)
+          applyGroupColor(nodeId, before)
+          patchGraphNode({ id: nodeId, color: before })
+          historyRecordingRef.current = true
+        },
+        redo: async () => {
+          historyRecordingRef.current = false
+          markLocalGraphChange()
+          groupColorCommittedRef.current.set(nodeId, after)
+          applyGroupColor(nodeId, after)
+          patchGraphNode({ id: nodeId, color: after })
+          historyRecordingRef.current = true
+        },
+      })
+    },
+    [applyGroupColor, graphHistory, markLocalGraphChange, patchGraphNode, readOnly]
+  )
+
+  const handleGroupColorPreview = useCallback(
+    (nodeId: string, color: string) => {
+      applyGroupColor(nodeId, color)
+    },
+    [applyGroupColor]
+  )
+
+  const handleGroupColorCommit = useCallback(
+    (nodeId: string, color: string, before: string) => {
+      const after = normalizeGroupColor(color)
+      const prev = normalizeGroupColor(before)
+      if (prev === after) return
+      markLocalGraphChange()
+      groupColorCommittedRef.current.set(nodeId, after)
+      applyGroupColor(nodeId, after, true)
+      patchGraphNode({ id: nodeId, color: after })
+      pushColorHistory(nodeId, prev, after)
+    },
+    [applyGroupColor, markLocalGraphChange, patchGraphNode, pushColorHistory]
+  )
+
+  const handleGroupColorRevert = useCallback(
+    (nodeId: string) => {
+      const committed = groupColorCommittedRef.current.get(nodeId)
+      const gn = graph?.nodes.find((n) => n.id === nodeId)
+      applyGroupColor(nodeId, committed ?? gn?.color)
+    },
+    [applyGroupColor, graph]
+  )
+
   const deleteNodeRef = useRef(deleteNode)
   useEffect(() => {
     deleteNodeRef.current = deleteNode
@@ -807,7 +907,7 @@ function GraphCanvas({
       const nh = h ? Math.round(h) : undefined
       if (!nw || !nh) return
       markLocalGraphChange()
-      updateNodeRef.current.mutate(
+      patchGraphNode(
         { id, w: nw, h: nh },
         {
           onSuccess: () => {
@@ -816,7 +916,7 @@ function GraphCanvas({
         }
       )
     },
-    [markLocalGraphChange, pushResizeHistory]
+    [markLocalGraphChange, patchGraphNode, pushResizeHistory]
   )
 
   const handleAutoFitAttachment = useCallback((nodeId: string, w: number, h: number) => {
@@ -828,8 +928,8 @@ function GraphCanvas({
           : n
       )
     )
-    updateNodeRef.current.mutate({ id: nodeId, w, h })
-  }, [markLocalGraphChange, setNodes])
+    patchGraphNode({ id: nodeId, w, h })
+  }, [markLocalGraphChange, patchGraphNode, setNodes])
 
   // fix: текст заметок с последнего синка сервера
   // но локально он другой (пользователь печатает), локальная версия сохраняется
@@ -871,16 +971,13 @@ function GraphCanvas({
             title: n.text?.trim() || 'Пачка',
             childCount: childCountByGroup.get(n.id) ?? 0,
             color: n.color,
+            committedColor: groupColorCommittedRef.current.get(n.id) ?? normalizeGroupColor(n.color),
             onResize: handleNodeResize,
             onResizeStart: handleNodeResizeStart,
-            onRename: (id: string, title: string) => updateNodeRef.current.mutate({ id, text: title }),
-            onColorChange: (id: string, color: string) => {
-              markLocalGraphChange()
-              updateNodeRef.current.mutate({ id, color })
-              setNodes((nds) =>
-                nds.map((x) => (x.id === id ? { ...x, data: { ...x.data, color } } : x))
-              )
-            },
+            onRename: (id: string, title: string) => patchGraphNode({ id, text: title }),
+            onColorPreview: handleGroupColorPreview,
+            onColorCommit: handleGroupColorCommit,
+            onColorRevert: handleGroupColorRevert,
             onToggleCollapse: toggleGroupCollapse,
             onUngroup: (id: string) => {
               if (confirm('Удалить рамку? Содержимое останется на канвасе.')) {
@@ -921,7 +1018,7 @@ function GraphCanvas({
           data: {
             text: n.text ?? '',
             onSave: (id: string, text: string) => {
-              updateNodeRef.current.mutate({ id, text })
+              patchGraphNode({ id, text })
               setNodes((nds) => nds.map((x) => (x.id === id ? { ...x, data: { ...x.data, text } } : x)))
             },
             onExpand: (id: string, text: string) => {
@@ -1813,11 +1910,28 @@ function GraphCanvas({
   }
 
   function applyLayoutPositions(positions: Map<string, { x: number; y: number }>, label = 'Раскладка применена') {
+    const current = getNodes()
+    const before: GraphPositionEntry[] = current.map((n) => ({
+      id: n.id,
+      x: n.position.x,
+      y: n.position.y,
+      parentId: n.parentId ?? null,
+    }))
+    const after: GraphPositionEntry[] = current.map((n) => {
+      const p = positions.get(n.id)
+      return {
+        id: n.id,
+        x: p?.x ?? n.position.x,
+        y: p?.y ?? n.position.y,
+        parentId: n.parentId ?? null,
+      }
+    })
     setNodes((nds) => nds.map((n) => ({ ...n, position: positions.get(n.id) ?? n.position })))
     savePositions.mutate({
       projectId: project.id,
-      positions: [...positions.entries()].map(([id, p]) => ({ id, ...p })),
+      positions: after.map(({ id, x, y, parentId }) => ({ id, x, y, parentId })),
     })
+    pushMoveHistory(before, after)
     toast.success(label)
     setTimeout(() => fitView({ padding: 0.2, duration: 400 }), 120)
   }
@@ -1949,7 +2063,7 @@ function GraphCanvas({
             nodeColor={(n) => {
               if (n.type === 'taskRF') {
                 const d = n.data as TaskNodeData
-                return d.snapshot.blocked ? '#ef4444' : d.snapshot.statusColor
+                return d.snapshot.blocked && d.snapshot.statusCategory !== 3 ? '#ef4444' : d.snapshot.statusColor
               }
               if (n.type === 'noteRF') return '#fbbf24'
               return '#a1a1aa'
@@ -2043,7 +2157,7 @@ function GraphCanvas({
                   Найти
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-72 p-0">
+              <PopoverContent align="start" className="nodrag nopan w-72 p-0">
                 <Command>
                   <CommandInput placeholder="Ключ или название задачи…" data-graph-search-input />
                   <CommandList className="max-h-64">
@@ -2064,25 +2178,25 @@ function GraphCanvas({
                 </Command>
               </PopoverContent>
             </Popover>
-            <Popover>
+            <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Вид линий и стрелок">
                   <Paintbrush className="h-4 w-4 shrink-0" />
                   Вид
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-72">
+              <PopoverContent manualClose align="start" className="nodrag nopan w-72">
                 <GraphAppearancePopover prefs={displayPrefs} onChange={setDisplayPrefs} />
               </PopoverContent>
             </Popover>
-            <Popover>
+            <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
               <PopoverTrigger asChild>
                 <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Фильтры графа">
                   <Network className="h-4 w-4 shrink-0" />
                   Фильтры
                 </Button>
               </PopoverTrigger>
-              <PopoverContent align="start" className="w-72">
+              <PopoverContent manualClose align="start" className="nodrag nopan w-72">
                 <div className="space-y-3">
                   <div>
                     <Label className="mb-1 text-xs text-muted-foreground">Типы нод</Label>
@@ -2613,7 +2727,7 @@ function GraphCanvas({
                 interactiveCheckboxes
                 onSourceChange={(next) => {
                   if (!noteDialog) return
-                  updateNodeRef.current.mutate({ id: noteDialog.id, text: next })
+                  patchGraphNode({ id: noteDialog.id, text: next })
                   setNodes((nds) =>
                     nds.map((x) =>
                       x.id === noteDialog.id ? { ...x, data: { ...x.data, text: next } } : x
@@ -2632,7 +2746,7 @@ function GraphCanvas({
                 <Button
                   onClick={() => {
                     if (!noteDialog) return
-                    updateNodeRef.current.mutate({ id: noteDialog.id, text: noteDraft })
+                    patchGraphNode({ id: noteDialog.id, text: noteDraft })
                     setNodes((nds) => nds.map((x) => (x.id === noteDialog.id ? { ...x, data: { ...x.data, text: noteDraft } } : x)))
                     setNoteDialog({ ...noteDialog, text: noteDraft })
                     setNoteEdit(false)

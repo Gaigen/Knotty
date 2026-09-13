@@ -193,3 +193,25 @@
 .react-flow__node.selected .react-flow__resize-control.handle {
   opacity: 1;
 }
+
+/* react-colorful — рамка пачки на графе (in-DOM, без нативного Chromium picker) */
+.group-color-picker {
+  width: 100%;
+  height: 132px;
+}
+.group-color-picker .react-colorful__saturation {
+  border-radius: 8px 8px 0 0;
+}
+.group-color-picker .react-colorful__hue {
+  height: 12px;
+  margin-top: 8px;
+  border-radius: 9999px;
+}
+.group-color-picker .react-colorful__pointer {
+  width: 14px;
+  height: 14px;
+}
+.group-color-picker .react-colorful__saturation-pointer {
+  width: 14px;
+  height: 14px;
+}

@@ -5,7 +5,9 @@ import { Handle, NodeResizer, NodeToolbar, Position, type NodeProps } from '@xyf
 import { ChevronDown, ChevronRight, Pencil, Trash2, BoxSelect, Palette } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useZoomBand } from '@/components/graph/use-zoom-band'
-import { GROUP_COLOR_PRESETS, groupColorStyles, normalizeGroupColor } from '@/lib/graph-group-color'
+import { groupColorStyles, normalizeGroupColor } from '@/lib/graph-group-color'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
+import { GroupColorPicker } from '@/components/graph/group-color-picker'
 
 const RESIZER_LINE = { borderWidth: 0 }
 
@@ -13,12 +15,15 @@ export interface GroupNodeData extends Record<string, unknown> {
   title: string
   childCount: number
   color?: string | null
+  committedColor?: string
   collapsed?: boolean
   dimmed?: boolean
   onResize?: (id: string, w?: number, h?: number) => void
   onResizeStart?: (id: string) => void
   onRename?: (id: string, title: string) => void
-  onColorChange?: (id: string, color: string) => void
+  onColorPreview?: (id: string, color: string) => void
+  onColorCommit?: (id: string, color: string, before: string) => void
+  onColorRevert?: (id: string) => void
   onToggleCollapse?: (id: string) => void
   onUngroup?: (id: string) => void
   onDeleteNode?: (nodeId: string, label: string) => void
@@ -32,6 +37,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
   const [draft, setDraft] = useState(d.title)
   const [colorOpen, setColorOpen] = useState(false)
   const accent = normalizeGroupColor(d.color)
+  const committed = normalizeGroupColor(d.committedColor ?? d.color)
   const palette = groupColorStyles(accent)
   const resizerHandle = {
     width: 9,
@@ -44,6 +50,11 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
   }
   const handleCls =
     '!z-50 !h-3 !w-3 !rounded-full !border-2 !border-white shadow-md pointer-events-auto'
+
+  function closeColorPicker() {
+    setColorOpen(false)
+    d.onColorRevert?.(id)
+  }
 
   return (
     <div
@@ -59,8 +70,17 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
         ...(selected ? { boxShadow: `0 0 0 2px ${palette.ringColor}` } : {}),
       }}
     >
-      <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
-        <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
+      <NodeToolbar
+        isVisible={(selected || colorOpen) && !far}
+        position={Position.Top}
+        offset={10}
+        className="nodrag nopan"
+      >
+        <div
+          className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg"
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             title="Разгруппировать"
@@ -84,57 +104,40 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            title="Цвет рамки"
-            className={cn(
-              'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
-              colorOpen && 'bg-muted text-foreground'
-            )}
-            onClick={(e) => {
-              e.stopPropagation()
-              setColorOpen((v) => !v)
-            }}
-          >
-            <Palette className="h-3.5 w-3.5" />
-          </button>
-          {colorOpen && (
-            <div className="flex items-center gap-1 px-0.5">
-              {GROUP_COLOR_PRESETS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  title={p.label}
-                  className={cn(
-                    'h-4 w-4 rounded-full border-2 transition-transform hover:scale-110',
-                    accent === p.hex ? 'border-foreground' : 'border-transparent'
-                  )}
-                  style={{ backgroundColor: p.hex }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    d.onColorChange?.(id, p.hex)
-                    setColorOpen(false)
-                  }}
-                />
-              ))}
-              <label
-                className="relative ml-0.5 flex h-4 w-4 cursor-pointer overflow-hidden rounded-full border border-border"
-                title="Свой цвет"
-                onClick={(e) => e.stopPropagation()}
+          <Popover open={colorOpen}>
+            <PopoverAnchor asChild>
+              <button
+                type="button"
+                title="Цвет рамки"
+                className={cn(
+                  'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
+                  colorOpen && 'bg-muted text-foreground'
+                )}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (colorOpen) closeColorPicker()
+                  else setColorOpen(true)
+                }}
               >
-                <span className="absolute inset-0 bg-gradient-to-br from-red-500 via-green-500 to-blue-500 opacity-80" />
-                <input
-                  type="color"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  value={accent}
-                  onChange={(e) => {
-                    d.onColorChange?.(id, e.target.value)
-                    setColorOpen(false)
-                  }}
-                />
-              </label>
-            </div>
-          )}
+                <Palette className="h-3.5 w-3.5" />
+              </button>
+            </PopoverAnchor>
+            <PopoverContent
+              manualClose
+              className="nodrag nopan w-[224px] p-3"
+              align="center"
+              side="top"
+              sideOffset={8}
+              onEscapeKeyDown={() => closeColorPicker()}
+            >
+              <GroupColorPicker
+                value={accent}
+                committedColor={committed}
+                onPreview={(hex) => d.onColorPreview?.(id, hex)}
+                onCommit={(hex, before) => d.onColorCommit?.(id, hex, before)}
+              />
+            </PopoverContent>
+          </Popover>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
           <button
             type="button"

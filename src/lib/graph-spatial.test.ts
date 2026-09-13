@@ -166,6 +166,16 @@ describe('blocks', () => {
     expect(ids.has('t1')).toBe(false)
   })
 
+  test('готовая блокирующая задача снимает блокировку', () => {
+    const ids = collectBlockedTaskIds({
+      links: [{ fromTaskId: 't1', toTaskId: 't2', type: 'blocks' }],
+      graphEdges: [],
+      nodes: [],
+      doneTaskIds: new Set(['t1', 't2']),
+    })
+    expect(ids.has('t2')).toBe(false)
+  })
+
   test('цикл через рамку ловится', () => {
     const cycle = findBlocksCycleOnGraph('t:A', 'g:G', [
       { from: 'g:G', to: 't:B' },

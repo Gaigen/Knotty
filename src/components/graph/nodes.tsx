@@ -130,11 +130,11 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
     <div
       className={cn(
         'relative flex h-full w-full min-h-[84px] min-w-[180px] flex-col rounded-xl border-2 bg-card p-2.5 shadow-md transition-opacity',
-        s.blocked ? 'border-red-500' : 'border-transparent',
+        s.blocked && s.statusCategory !== 3 ? 'border-red-500' : 'border-transparent',
         d.dimmed && 'opacity-25',
         selected && 'ring-2 ring-teal-500/60'
       )}
-      style={!s.blocked ? { borderColor: s.statusColor } : undefined}
+      style={!(s.blocked && s.statusCategory !== 3) ? { borderColor: s.statusColor } : undefined}
     >
       <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">

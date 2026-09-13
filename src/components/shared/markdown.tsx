@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -71,11 +71,24 @@ export function MarkdownView({
   interactiveCheckboxes?: boolean
   onSourceChange?: (next: string) => void
 }) {
-  if (!source?.trim()) {
+  const canToggle = interactiveCheckboxes && onSourceChange
+  const [optimistic, setOptimistic] = useState<string | null>(null)
+  const displaySource = optimistic ?? source
+
+  useEffect(() => {
+    if (optimistic !== null && source === optimistic) setOptimistic(null)
+  }, [source, optimistic])
+
+  function toggleAt(index: number) {
+    const next = toggleMarkdownCheckbox(displaySource, index)
+    setOptimistic(next)
+    onSourceChange?.(next)
+  }
+
+  if (!displaySource?.trim()) {
     return <p className={cn('text-sm text-muted-foreground italic', className)}>Нет описания</p>
   }
 
-  const canToggle = interactiveCheckboxes && onSourceChange
   let checkboxIndex = 0
 
   return (
@@ -130,7 +143,7 @@ export function MarkdownView({
                           .querySelector('input[type="checkbox"][data-task-idx]')
                           ?.getAttribute('data-task-idx')
                         if (raw == null) return
-                        onSourceChange!(toggleMarkdownCheckbox(source, Number(raw)))
+                        toggleAt(Number(raw))
                       }
                     : undefined
                 }
@@ -167,15 +180,16 @@ export function MarkdownView({
             return (
               <input
                 type="checkbox"
+                readOnly
                 checked={props.checked}
                 data-task-idx={idx}
                 className="nodrag nopan mr-2 h-4 w-4 shrink-0 cursor-pointer align-middle accent-teal-700"
                 onMouseDown={stopGraphPointer}
                 onPointerDown={stopGraphPointer}
-                onClick={stopGraphPointer}
-                onChange={(e) => {
+                onClick={(e) => {
                   stopGraphPointer(e)
-                  onSourceChange!(toggleMarkdownCheckbox(source, idx))
+                  e.preventDefault()
+                  toggleAt(idx)
                 }}
               />
             )
@@ -205,7 +219,7 @@ export function MarkdownView({
           ),
         }}
       >
-        {source}
+        {displaySource}
       </ReactMarkdown>
     </div>
   )

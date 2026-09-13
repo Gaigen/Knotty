@@ -82,6 +82,7 @@ export function WorkflowDialog({
 
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(STATUS_PALETTE[0])
+  const [newColorOpen, setNewColorOpen] = useState(false)
   const [newCategory, setNewCategory] = useState(0)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -96,7 +97,8 @@ export function WorkflowDialog({
   // локальная копия статусов — правки применяются мгновенно, сервер подтверждает.
   const [statuses, setStatuses] = useState<StatusDto[]>([])
   const [prevKey, setPrevKey] = useState('')
-  const syncKey = `${open ? 'open' : 'closed'}:${project.id}:${project.statuses.map((s) => s.id).join(',')}:${project.statuses.map((s) => `${s.name}/${s.color}/${s.category}/${s.order}`).join('|')}`
+  // Только id-список: иначе каждый PATCH цвета/имени сбрасывает строки и закрывает палитру
+  const syncKey = `${open ? 'open' : 'closed'}:${project.id}:${project.statuses.map((s) => s.id).join(',')}`
   if (open && syncKey !== prevKey) {
     setPrevKey(syncKey)
     setStatuses([...project.statuses].sort((a, b) => a.order - b.order))
@@ -265,18 +267,19 @@ export function WorkflowDialog({
 
         {/* новый статус */}
         <div className="flex items-center gap-1.5 rounded-lg border border-dashed px-2 py-1.5">
-          <Popover>
+          <Popover open={newColorOpen} onOpenChange={setNewColorOpen}>
             <PopoverTrigger asChild>
               <button
                 type="button"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-transparent transition-transform hover:scale-105"
                 style={{ backgroundColor: newColor }}
                 aria-label="Цвет нового статуса"
+                onPointerDown={(e) => e.stopPropagation()}
               >
                 <Palette className="h-3.5 w-3.5 text-white drop-shadow" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-2" align="start">
+            <PopoverContent manualClose className="w-auto p-2" align="start">
               <div className="grid grid-cols-5 gap-1.5">
                 {STATUS_PALETTE.map((c) => (
                   <button
@@ -441,6 +444,7 @@ function StatusSortableRow({
     isDragging,
   } = useSortable({ id: s.id })
 
+  const [colorOpen, setColorOpen] = useState(false)
   const hasTasks = taskCount > 0
   const deleteTitle = !canDelete
     ? 'В проекте должен остаться хотя бы один статус'
@@ -469,18 +473,19 @@ function StatusSortableRow({
         <GripVertical className="h-4 w-4" />
       </button>
 
-      <Popover>
+      <Popover open={colorOpen} onOpenChange={setColorOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-transparent transition-colors hover:border-foreground/20"
             style={{ backgroundColor: s.color }}
             aria-label={`Цвет статуса «${s.name}»`}
+            onPointerDown={(e) => e.stopPropagation()}
           >
             <Palette className="h-3.5 w-3.5 text-white drop-shadow" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-2" align="start">
+        <PopoverContent manualClose className="w-auto p-2" align="start">
           <div className="grid grid-cols-5 gap-1.5">
             {STATUS_PALETTE.map((c) => (
               <button
