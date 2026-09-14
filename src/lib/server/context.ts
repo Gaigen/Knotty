@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers'
 import { db } from '@/lib/db'
 import { hashApiToken } from '@/lib/api-tokens'
+import { getApiTranslations } from './i18n'
 import { ApiError } from './validation'
 import { verifySessionToken, SESSION_COOKIE, LEGACY_SESSION_COOKIE } from '@/lib/auth'
 
@@ -46,9 +47,15 @@ export async function getCurrentUser() {
   const auth = h.get('authorization')
   if (auth?.toLowerCase().startsWith('bearer ')) {
     const token = auth.slice(7).trim()
-    if (!token) throw new ApiError('Пустой API-токен', 401)
+    if (!token) {
+      const t = await getApiTranslations()
+      throw new ApiError(t('emptyApiToken'), 401)
+    }
     const user = await userFromApiToken(token)
-    if (!user) throw new ApiError('Неверный API-токен', 401)
+    if (!user) {
+      const t = await getApiTranslations()
+      throw new ApiError(t('invalidApiToken'), 401)
+    }
     return user
   }
 
@@ -56,14 +63,18 @@ export async function getCurrentUser() {
   const cookieToken =
     cookieStore.get(SESSION_COOKIE)?.value ?? cookieStore.get(LEGACY_SESSION_COOKIE)?.value
   const claims = await verifySessionToken(cookieToken)
-  if (!claims) throw new ApiError('Требуется вход в систему', 401)
+  if (!claims) {
+    const t = await getApiTranslations()
+    throw new ApiError(t('loginRequired'), 401)
+  }
 
   const user = await db.user.findUnique({
     where: { id: claims.userId },
     select: userSelect,
   })
   if (!user || user.sessionEpoch !== claims.epoch) {
-    throw new ApiError('Требуется вход в систему', 401)
+    const t = await getApiTranslations()
+    throw new ApiError(t('loginRequired'), 401)
   }
   return user
 }
@@ -71,7 +82,10 @@ export async function getCurrentUser() {
 /** Только для администраторов (управление пользователями: /api/users, /admin/*) */
 export async function requireAdmin() {
   const user = await getCurrentUser()
-  if (!user.isAdmin) throw new ApiError('Недостаточно прав (только администратор)', 403)
+  if (!user.isAdmin) {
+    const t = await getApiTranslations()
+    throw new ApiError(t('adminRequired'), 403)
+  }
   return user
 }
 
@@ -84,12 +98,13 @@ export async function touchProject(projectId: string) {
   }
 }
 
-export function jsonError(error: unknown) {
+export async function jsonError(error: unknown) {
   if (error instanceof ApiError) {
     return Response.json({ error: error.message }, { status: error.status })
   }
   console.error('[api]', error)
-  return Response.json({ error: 'Внутренняя ошибка сервера' }, { status: 500 })
+  const t = await getApiTranslations()
+  return Response.json({ error: t('internalServerError') }, { status: 500 })
 }
 
 /** Парсинг тела запроса с обработкой ошибок */
@@ -97,7 +112,8 @@ export async function readJson<T = Record<string, unknown>>(req: Request): Promi
   try {
     return (await req.json()) as T
   } catch {
-    throw new ApiError('Некорректное тело запроса')
+    const t = await getApiTranslations()
+    throw new ApiError(t('invalidRequestBody'))
   }
 }
 

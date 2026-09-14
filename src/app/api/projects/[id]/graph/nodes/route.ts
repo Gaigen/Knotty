@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -23,24 +23,24 @@ export async function POST(req: Request, { params }: Params) {
     const body = await readJson<CreateNodeBody>(req)
 
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const refType = body.refType ?? 'note'
-    if (!['task', 'attachment', 'note', 'group'].includes(refType)) throw new ApiError('Некорректный тип ноды')
+    if (!['task', 'attachment', 'note', 'group'].includes(refType)) await apiError('invalidNodeType')
 
     if (refType === 'task') {
-      if (!body.refId) throw new ApiError('Не указана задача')
+      if (!body.refId) await apiError('taskNotSpecified')
       const task = await db.task.findFirst({ where: { id: body.refId, projectId }, select: { id: true } })
-      if (!task) throw new ApiError('Задача не найдена в этом проекте')
+      if (!task) await apiError('taskNotFound', undefined, 404)
       const existing = await db.graphNode.findFirst({ where: { projectId, refType: 'task', refId: body.refId } })
-      if (existing) throw new ApiError('Эта задача уже есть на канвасе')
+      if (existing) await apiError('taskAlreadyOnCanvas')
     }
     if (refType === 'attachment') {
-      if (!body.refId) throw new ApiError('Не указано вложение')
+      if (!body.refId) await apiError('attachmentNotSpecified')
       const attachment = await db.attachment.findFirst({ where: { id: body.refId, projectId }, select: { id: true } })
-      if (!attachment) throw new ApiError('Вложение не найдено в этом проекте')
+      if (!attachment) await apiError('attachmentNotFoundInProject')
       const existing = await db.graphNode.findFirst({ where: { projectId, refType: 'attachment', refId: body.refId } })
-      if (existing) throw new ApiError('Этот файл уже есть на канвасе')
+      if (existing) await apiError('fileAlreadyOnCanvas')
     }
 
     const node = await db.graphNode.create({
@@ -61,6 +61,6 @@ export async function POST(req: Request, { params }: Params) {
       { status: 201 }
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

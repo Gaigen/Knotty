@@ -34,7 +34,9 @@ import {
   useCreateLink, useCreateGraphNode, useDeleteGraphNode, useGraph, useSaveGraphPositions, useTasks, useUpdateGraphNode, useUpdateTask,
   useCreateGraphEdge, useDeleteGraphEdge, useDeleteLink, useBulkAddGraphTasks, useWrapGraphGroup, attachmentFileUrl,
 } from '@/lib/api'
-import { PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
+import { PRIORITIES, TASK_TYPES } from '@/lib/config'
+import { useTranslations } from 'next-intl'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
 import { layoutDependencyStrip, layoutHierarchyColumn, layoutTree } from '@/lib/graph-dagre-layout'
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
 import { graphEdgeMarkers } from '@/lib/graph-edge-theme'
@@ -68,13 +70,13 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes = { knotty: KnottyEdge }
 
-/** Шаблоны быстрых заметок для ПКМ-меню */
-const NOTE_TEMPLATES = [
-  { id: 'idea', icon: '💡', label: 'Идея', text: '## 💡 Идея\n\n- Суть:\n- Зачем:\n- Что нужно:' },
-  { id: 'checklist', icon: '☑️', label: 'Чек-лист', text: '## ☑️ Чек-лист\n\n- [ ] Пункт 1\n- [ ] Пункт 2\n- [ ] Пункт 3' },
-  { id: 'question', icon: '❓', label: 'Вопрос', text: '## ❓ Вопрос\n\n**Контекст:**\n\n**Вопрос:**\n\n**Ответ:**' },
-  { id: 'risk', icon: '⚠️', label: 'Риск', text: '## ⚠️ Риск\n\n**Что может пойти не так:**\n\n**Вероятность:**\n\n**Митигация:**' },
-] as const
+const NOTE_TEMPLATE_IDS = ['idea', 'checklist', 'question', 'risk'] as const
+const NOTE_TEMPLATE_ICONS: Record<(typeof NOTE_TEMPLATE_IDS)[number], string> = {
+  idea: '💡',
+  checklist: '☑️',
+  question: '❓',
+  risk: '⚠️',
+}
 
 export function GraphView({
   project,
@@ -179,6 +181,20 @@ function GraphCanvas({
   users: UserDto[]
   onOpenTask: (id: string) => void
 }) {
+  const t = useTranslations('graph')
+  const tc = useTranslations('common')
+  const { typeLabel, priorityLabel } = useEnumLabels()
+  const noteTemplates = useMemo(
+    () =>
+      NOTE_TEMPLATE_IDS.map((id) => ({
+        id,
+        icon: NOTE_TEMPLATE_ICONS[id],
+        label: t(`noteTemplates.${id}.label`),
+        text: t(`noteTemplates.${id}.text`),
+      })),
+    [t]
+  )
+  const defaultGroupTitle = t('group.defaultTitle')
   const { data: graph, isLoading } = useGraph(project.id)
   const { data: tasks = [] } = useTasks(project.id)
   const createNode = useCreateGraphNode()
@@ -404,7 +420,7 @@ function GraphCanvas({
       })
       if (!changed) return
       graphHistory.push({
-        label: 'перемещение',
+        label: t('history.move'),
         undo: async () => {
           historyRecordingRef.current = false
           applyPositionEntries(before)
@@ -438,7 +454,7 @@ function GraphCanvas({
       if (!historyRecordingRef.current || readOnly) return
       if (before.w === after.w && before.h === after.h) return
       graphHistory.push({
-        label: 'изменение размера',
+        label: t('history.resize'),
         undo: async () => {
           historyRecordingRef.current = false
           markLocalGraphChange()
@@ -508,7 +524,7 @@ function GraphCanvas({
       if (!historyRecordingRef.current || readOnly) return
       let liveId = nodeId
       graphHistory.push({
-        label: 'создание на канвасе',
+        label: t('history.createNode'),
         undo: async () => {
           if (!liveId) return
           historyRecordingRef.current = false
@@ -534,7 +550,7 @@ function GraphCanvas({
       let gid = groupId
       const ids = [...childIds]
       graphHistory.push({
-        label: 'группировка',
+        label: t('history.group'),
         undo: async () => {
           historyRecordingRef.current = false
           markLocalGraphChange()
@@ -561,7 +577,7 @@ function GraphCanvas({
       const deletedIds = [...nodeIds]
       let restoredIds: string[] = []
       graphHistory.push({
-        label: 'удаление с канваса',
+        label: t('history.deleteFromCanvas'),
         undo: async () => {
           historyRecordingRef.current = false
           markLocalGraphChange()
@@ -624,7 +640,7 @@ function GraphCanvas({
       if (snap.kind === 'link' && snap.linkType) {
         const fromTask = nodeRefToId.get(snap.fromNodeId)
         const toTask = nodeRefToId.get(snap.toNodeId)
-        if (!fromTask || !toTask) throw new Error('Задачи для связи не найдены')
+        if (!fromTask || !toTask) throw new Error(t('history.tasksNotFound'))
         await createLink.mutateAsync({
           fromTaskId: fromTask,
           toTaskId: toTask,
@@ -647,7 +663,7 @@ function GraphCanvas({
     (snap: GraphEdgeSnapshot) => {
       if (!historyRecordingRef.current || readOnly) return
       graphHistory.push({
-        label: 'удаление связи',
+        label: t('history.deleteEdge'),
         undo: async () => {
           historyRecordingRef.current = false
           await recreateEdgeSnapshot(snap)
@@ -667,7 +683,7 @@ function GraphCanvas({
     (snap: GraphEdgeSnapshot) => {
       if (!historyRecordingRef.current || readOnly) return
       graphHistory.push({
-        label: 'создание связи',
+        label: t('history.createEdge'),
         undo: async () => {
           historyRecordingRef.current = false
           await deleteEdgeSnapshot(snap)
@@ -731,7 +747,7 @@ function GraphCanvas({
     (nodeId: string, before: string, after: string) => {
       if (!historyRecordingRef.current || readOnly || before === after) return
       graphHistory.push({
-        label: 'цвет рамки',
+        label: t('history.groupColor'),
         undo: async () => {
           historyRecordingRef.current = false
           markLocalGraphChange()
@@ -815,10 +831,10 @@ function GraphCanvas({
     try {
       const r = await bulkAddGraph.mutateAsync({ projectId: project.id, all: true })
       if (r.created === 0) {
-        toast.message('Все задачи уже на канвасе')
+        toast.message(t('toasts.allTasksOnCanvas'))
         return
       }
-      toast.success(`Добавлено на канвас: ${r.created}`)
+      toast.success(t('toasts.addedToCanvas', { count: r.created }))
       setTimeout(() => fitView({ padding: 0.25, duration: 400 }), 350)
     } catch (e) {
       toast.error((e as Error).message)
@@ -831,7 +847,7 @@ function GraphCanvas({
     projectIdRef.current = project.id
   }, [project.id])
   const requestDeleteNode = useCallback((nodeId: string, label: string) => {
-    if (confirm(`Удалить ${label} с канваса?`)) {
+    if (confirm(t('confirm.deleteFromCanvas', { label }))) {
       deleteNodeRef.current.mutate({ id: nodeId, projectId: projectIdRef.current })
     }
   }, [])
@@ -881,7 +897,7 @@ function GraphCanvas({
             qc.invalidateQueries({ queryKey: ['projects'] })
             if (snap) pushEdgeDeleteHistory(snap)
           })
-          .catch(() => toast.error('Не удалось удалить связь'))
+          .catch(() => toast.error(t('toasts.deleteEdgeFailed')))
       }
     },
     [deleteCanvasEdge, edgeSnapshotFromEdge, getEdges, project.id, pushEdgeDeleteHistory, qc, setEdges]
@@ -968,7 +984,7 @@ function GraphCanvas({
           style: { width: n.w ?? DEFAULT_GROUP_SIZE.w, height: n.h ?? DEFAULT_GROUP_SIZE.h },
           zIndex: -1,
           data: {
-            title: n.text?.trim() || 'Пачка',
+            title: n.text?.trim() || defaultGroupTitle,
             childCount: childCountByGroup.get(n.id) ?? 0,
             color: n.color,
             committedColor: groupColorCommittedRef.current.get(n.id) ?? normalizeGroupColor(n.color),
@@ -980,7 +996,7 @@ function GraphCanvas({
             onColorRevert: handleGroupColorRevert,
             onToggleCollapse: toggleGroupCollapse,
             onUngroup: (id: string) => {
-              if (confirm('Удалить рамку? Содержимое останется на канвасе.')) {
+              if (confirm(t('confirm.deleteFrame'))) {
                 deleteNodeRef.current.mutate({ id, projectId: projectIdRef.current })
               }
             },
@@ -1066,7 +1082,7 @@ function GraphCanvas({
         deletable: true,
         data: {
           kind,
-          label: kind === 'blocks' ? 'блокирует' : kind === 'relates' ? 'связана' : undefined,
+          label: kind === 'blocks' ? t('edges.blocksShort') : kind === 'relates' ? t('edges.relatesShort') : undefined,
           onDeleteEdge: handleDeleteEdge,
         } as KnottyEdgeData,
         ...markers,
@@ -1384,7 +1400,7 @@ function GraphCanvas({
               fromNodeId: c.source,
               toNodeId: c.target,
             })
-            toast.success('Связь нод создана')
+            toast.success(t('toasts.nodeLinkCreated'))
           },
           onError: (e) => toast.error(e.message),
         }
@@ -1406,7 +1422,7 @@ function GraphCanvas({
               fromNodeId: connectDraft.from,
               toNodeId: connectDraft.to,
             })
-            toast.success(type === 'blocks' ? 'Связь «блокирует» создана' : type === 'relates' ? 'Связь «связана с» создана' : 'Связь нод создана')
+            toast.success(type === 'blocks' ? t('toasts.blocksLinkCreated') : type === 'relates' ? t('toasts.relatesLinkCreated') : t('toasts.nodeLinkCreated'))
             setConnectDraft(null)
           },
           onError: (e) => {
@@ -1421,7 +1437,7 @@ function GraphCanvas({
     const fromTaskId = nodeRefToId.get(connectDraft.from)
     const toTaskId = nodeRefToId.get(connectDraft.to)
     if (!fromTaskId || !toTaskId) {
-      toast.error('Связывать можно только ноды задач')
+      toast.error(t('toasts.tasksOnly'))
       setConnectDraft(null)
       return
     }
@@ -1436,7 +1452,7 @@ function GraphCanvas({
             toNodeId: connectDraft.to,
             linkType: type,
           })
-          toast.success(type === 'blocks' ? 'Связь «блокирует» создана' : 'Связь «связана с» создана')
+          toast.success(type === 'blocks' ? t('toasts.blocksLinkCreated') : t('toasts.relatesLinkCreated'))
           setConnectDraft(null)
         },
         onError: (e) => {
@@ -1459,7 +1475,7 @@ function GraphCanvas({
               qc.invalidateQueries({ queryKey: ['projects'] })
               if (snap) pushEdgeDeleteHistory(snap)
             })
-            .catch(() => toast.error('Не удалось удалить связь'))
+            .catch(() => toast.error(t('toasts.deleteEdgeFailed')))
         } else if (e.id.startsWith('edge-')) {
           deleteCanvasEdge.mutate(
             { id: e.id.slice(5), projectId: project.id },
@@ -1483,14 +1499,14 @@ function GraphCanvas({
       const label =
         nodes.length === 1
           ? nodes[0].type === 'taskRF'
-            ? 'ноду (задача останется в проекте)'
+            ? t('deleteLabels.taskNode')
             : nodes[0].type === 'noteRF'
-              ? 'заметку'
+              ? t('deleteLabels.note')
               : nodes[0].type === 'groupRF'
-                ? 'рамку (содержимое останется)'
-                : 'ноду файла'
-          : `${nodes.length} нод`
-      const ok = confirm(`Удалить ${label} с канваса?`)
+                ? t('deleteLabels.group')
+                : t('deleteLabels.fileNode')
+          : t('deleteLabels.nodesCount', { count: nodes.length })
+      const ok = confirm(t('confirm.deleteFromCanvas', { label }))
       if (ok) {
         pushDeleteNodesHistory(nodes.map((n) => n.id))
         for (const n of nodes) {
@@ -1667,7 +1683,7 @@ function GraphCanvas({
     if (kind === 'newTask') setAddTaskOpen(true)
     else if (kind === 'pickTask') setPickTaskOpen(true)
     else if (kind === 'note') createNote()
-    else if (kind === 'noteTpl' && noteTplId) createNote(NOTE_TEMPLATES.find((t) => t.id === noteTplId)?.text ?? '')
+    else if (kind === 'noteTpl' && noteTplId) createNote(noteTemplates.find((tpl) => tpl.id === noteTplId)?.text ?? '')
     else if (kind === 'group') {
       const pos = pendingPosRef.current ?? centerPosition()
       pendingPosRef.current = null
@@ -1678,7 +1694,7 @@ function GraphCanvas({
           refType: 'group',
           x: pos.x,
           y: pos.y,
-          text: 'Пачка',
+          text: defaultGroupTitle,
           w: DEFAULT_GROUP_SIZE.w,
           h: DEFAULT_GROUP_SIZE.h,
         },
@@ -1691,7 +1707,7 @@ function GraphCanvas({
                 y: pos.y,
                 w: DEFAULT_GROUP_SIZE.w,
                 h: DEFAULT_GROUP_SIZE.h,
-                text: 'Пачка',
+                text: defaultGroupTitle,
                 parentId: null,
               },
               res.id
@@ -1706,7 +1722,7 @@ function GraphCanvas({
   function wrapSelectedNodes() {
     const ids = nodes.filter((n) => n.selected && n.type !== 'groupRF').map((n) => n.id)
     if (ids.length < 1) {
-      toast.message('Выделите ноды для рамки')
+      toast.message(t('toasts.selectNodesForFrame'))
       return
     }
     markLocalGraphChange()
@@ -1715,7 +1731,7 @@ function GraphCanvas({
       {
         onSuccess: (res) => {
           pushWrapHistory(res.id, ids)
-          toast.success('Рамка создана')
+          toast.success(t('toasts.frameCreated'))
         },
         onError: (e) => toast.error(e.message),
       }
@@ -1738,7 +1754,7 @@ function GraphCanvas({
           for (const id of targets.slice(1)) {
             updateTaskRef.current.mutate({ id, projectId: project.id, [field]: value })
           }
-          toast.success(targets.length > 1 ? `Обновлено задач: ${targets.length}` : 'Задача обновлена')
+          toast.success(targets.length > 1 ? t('toasts.tasksUpdated', { count: targets.length }) : t('toasts.taskUpdated'))
         },
         onError: (e) => toast.error(e.message),
       }
@@ -1773,7 +1789,7 @@ function GraphCanvas({
     if (action === 'deleteSelected') {
       const selected = nodes.filter((n) => n.selected)
       if (selected.length === 0) return
-      const ok = confirm(`Удалить выбранные ноды (${selected.length}) с канваса?`)
+      const ok = confirm(t('confirm.deleteSelectedNodes', { count: selected.length }))
       if (!ok) return
       pushDeleteNodesHistory(selected.map((n) => n.id))
       for (const n of selected) {
@@ -1784,12 +1800,12 @@ function GraphCanvas({
 
     if (action === 'delete') {
       const label = node.type === 'taskRF'
-        ? 'ноду (задача останется в проекте)'
+        ? t('deleteLabels.taskNode')
         : node.type === 'noteRF'
-          ? 'заметку'
+          ? t('deleteLabels.note')
           : node.type === 'groupRF'
-            ? 'рамку (содержимое останется)'
-            : 'ноду файла'
+            ? t('deleteLabels.group')
+            : t('deleteLabels.fileNode')
       requestDeleteNode(node.id, label)
       return
     }
@@ -1835,7 +1851,7 @@ function GraphCanvas({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, type: newTaskType }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Ошибка создания')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t('toasts.createError'))
       const task = await res.json()
       const pos = takePosition()
       markLocalGraphChange()
@@ -1845,7 +1861,7 @@ function GraphCanvas({
       qc.invalidateQueries({ queryKey: ['tasks', project.id] })
       qc.invalidateQueries({ queryKey: ['projects'] })
       qc.invalidateQueries({ queryKey: ['project', project.id] })
-      toast.success(`Задача ${task.key} создана на канвасе`)
+      toast.success(t('toasts.taskCreatedOnCanvas', { key: task.key }))
       setAddTaskOpen(false)
       setNewTaskTitle('')
     } catch (e) {
@@ -1878,14 +1894,14 @@ function GraphCanvas({
       const form = new FormData()
       form.append('files', file)
       const res = await fetch(`/api/projects/${project.id}/attachments`, { method: 'POST', body: form })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Ошибка загрузки')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t('toasts.uploadError'))
       const created: { id: string }[] = await res.json()
       for (const att of created) {
         markLocalGraphChange()
         const node = await createNode.mutateAsync({ projectId: project.id, refType: 'attachment', refId: att.id, x: pos.x, y: pos.y })
         pushCreateNodeHistory({ refType: 'attachment', refId: att.id, x: pos.x, y: pos.y, parentId: null }, node.id)
       }
-      toast.success(`Файл «${file.name}» на канвасе`)
+      toast.success(t('toasts.fileOnCanvas', { name: file.name }))
     } catch (e) {
       toast.error((e as Error).message)
     }
@@ -1909,7 +1925,7 @@ function GraphCanvas({
     })
   }
 
-  function applyLayoutPositions(positions: Map<string, { x: number; y: number }>, label = 'Раскладка применена') {
+  function applyLayoutPositions(positions: Map<string, { x: number; y: number }>, label = t('toasts.layoutApplied')) {
     const current = getNodes()
     const before: GraphPositionEntry[] = current.map((n) => ({
       id: n.id,
@@ -1937,15 +1953,15 @@ function GraphCanvas({
   }
 
   function autoLayoutTree() {
-    applyLayoutPositions(layoutTree(nodesForLayout(), getEdges()), 'Дерево: иерархия и подзадачи')
+    applyLayoutPositions(layoutTree(nodesForLayout(), getEdges()), t('toasts.layoutTree'))
   }
 
   function autoLayoutColumn() {
-    applyLayoutPositions(layoutHierarchyColumn(nodesForLayout(), getEdges()), 'Столб: подзадачи под родителем')
+    applyLayoutPositions(layoutHierarchyColumn(nodesForLayout(), getEdges()), t('toasts.layoutColumn'))
   }
 
   function autoLayoutStrip() {
-    applyLayoutPositions(layoutDependencyStrip(nodesForLayout(), getEdges()), 'Полоса: зависимости слева → справа')
+    applyLayoutPositions(layoutDependencyStrip(nodesForLayout(), getEdges()), t('toasts.layoutStrip'))
   }
 
   if (isMobile) {
@@ -1953,8 +1969,8 @@ function GraphCanvas({
       <div className="flex flex-1 items-center justify-center p-6">
         <EmptyState
           icon={<MonitorSmartphone className="h-10 w-10" />}
-          title="Граф доступен с компьютера"
-          description="Бесконечный канвас с зумом и перетаскиванием рассчитан на большой экран."
+          title={t('mobile.title')}
+          description={t('mobile.description')}
         />
       </div>
     )
@@ -2078,18 +2094,18 @@ function GraphCanvas({
               <DropdownMenuTrigger asChild>
                 <Button size="sm" className="h-8 shrink-0 gap-1.5 px-2.5">
                   <Plus className="h-4 w-4 shrink-0" />
-                  Добавить
+                  {t('toolbar.add')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => setAddTaskOpen(true)}>
-                  <SquarePlus className="h-4 w-4" /> Новая задача
+                  <SquarePlus className="h-4 w-4" /> {t('toolbar.newTask')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setPickTaskOpen(true)}>
-                  <Search className="h-4 w-4" /> Существующая задача…
+                  <Search className="h-4 w-4" /> {t('toolbar.existingTask')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => createNote()}>
-                  <StickyNote className="h-4 w-4" /> Заметка
+                  <StickyNote className="h-4 w-4" /> {t('toolbar.note')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => {
@@ -2101,7 +2117,7 @@ function GraphCanvas({
                         refType: 'group',
                         x: pos.x,
                         y: pos.y,
-                        text: 'Пачка',
+                        text: defaultGroupTitle,
                         w: DEFAULT_GROUP_SIZE.w,
                         h: DEFAULT_GROUP_SIZE.h,
                       },
@@ -2114,7 +2130,7 @@ function GraphCanvas({
                               y: pos.y,
                               w: DEFAULT_GROUP_SIZE.w,
                               h: DEFAULT_GROUP_SIZE.h,
-                              text: 'Пачка',
+                              text: defaultGroupTitle,
                               parentId: null,
                             },
                             res.id
@@ -2124,44 +2140,44 @@ function GraphCanvas({
                     )
                   }}
                 >
-                  <BoxSelect className="h-4 w-4" /> Рамка
+                  <BoxSelect className="h-4 w-4" /> {t('toolbar.frame')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4" /> Загрузить файл
+                  <Upload className="h-4 w-4" /> {t('toolbar.uploadFile')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Автоматическая раскладка">
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title={t('toolbar.autoLayout')}>
                   <Waypoints className="h-4 w-4 shrink-0" />
-                  Раскладка
+                  {t('toolbar.layout')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => autoLayoutTree()}>
-                  <GitBranch className="h-4 w-4" /> Дерево (иерархия)
+                  <GitBranch className="h-4 w-4" /> {t('toolbar.layoutTree')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => autoLayoutColumn()}>
-                  <ArrowDownCircle className="h-4 w-4" /> Столб (подзадачи вниз)
+                  <ArrowDownCircle className="h-4 w-4" /> {t('toolbar.layoutColumn')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => autoLayoutStrip()}>
-                  <ArrowRight className="h-4 w-4" /> Полоса (blocks / relates)
+                  <ArrowRight className="h-4 w-4" /> {t('toolbar.layoutStrip')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Popover open={searchOpen} onOpenChange={setSearchOpen}>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Найти ноду на канвасе (/)">
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title={t('toolbar.findTitle')}>
                   <Search className="h-4 w-4 shrink-0" />
-                  Найти
+                  {t('toolbar.find')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="nodrag nopan w-72 p-0">
                 <Command>
-                  <CommandInput placeholder="Ключ или название задачи…" data-graph-search-input />
+                  <CommandInput placeholder={t('toolbar.searchPlaceholder')} data-graph-search-input />
                   <CommandList className="max-h-64">
-                    <CommandEmpty>Нет задач на канвасе</CommandEmpty>
+                    <CommandEmpty>{t('toolbar.noTasksOnCanvas')}</CommandEmpty>
                     <CommandGroup>
                       {searchableCanvasNodes.map((t) => (
                         <CommandItem
@@ -2180,9 +2196,9 @@ function GraphCanvas({
             </Popover>
             <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Вид линий и стрелок">
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title={t('toolbar.appearanceTitle')}>
                   <Paintbrush className="h-4 w-4 shrink-0" />
-                  Вид
+                  {t('toolbar.appearance')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent manualClose align="start" className="nodrag nopan w-72">
@@ -2191,32 +2207,32 @@ function GraphCanvas({
             </Popover>
             <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title="Фильтры графа">
+                <Button size="sm" variant="outline" className="h-8 shrink-0 gap-1.5 px-2.5" title={t('toolbar.filtersTitle')}>
                   <Network className="h-4 w-4 shrink-0" />
-                  Фильтры
+                  {t('toolbar.filters')}
                 </Button>
               </PopoverTrigger>
               <PopoverContent manualClose align="start" className="nodrag nopan w-72">
                 <div className="space-y-3">
                   <div>
-                    <Label className="mb-1 text-xs text-muted-foreground">Типы нод</Label>
+                    <Label className="mb-1 text-xs text-muted-foreground">{t('filters.nodeTypes')}</Label>
                     <div className="space-y-1">
-                      <GraphFilterCheck label="Задачи" checked={filters.showTasks} onChange={(v) => setFilters((f) => ({ ...f, showTasks: v }))} />
-                      <GraphFilterCheck label="Заметки" checked={filters.showNotes} onChange={(v) => setFilters((f) => ({ ...f, showNotes: v }))} />
-                      <GraphFilterCheck label="Файлы" checked={filters.showAttachments} onChange={(v) => setFilters((f) => ({ ...f, showAttachments: v }))} />
+                      <GraphFilterCheck label={t('filters.tasks')} checked={filters.showTasks} onChange={(v) => setFilters((f) => ({ ...f, showTasks: v }))} />
+                      <GraphFilterCheck label={t('filters.notes')} checked={filters.showNotes} onChange={(v) => setFilters((f) => ({ ...f, showNotes: v }))} />
+                      <GraphFilterCheck label={t('filters.files')} checked={filters.showAttachments} onChange={(v) => setFilters((f) => ({ ...f, showAttachments: v }))} />
                     </div>
                   </div>
                   <div>
-                    <Label className="mb-1 text-xs text-muted-foreground">Связи на канвасе</Label>
+                    <Label className="mb-1 text-xs text-muted-foreground">{t('filters.edges')}</Label>
                     <div className="space-y-1">
-                      <GraphFilterCheck label="Иерархия (родитель → потомок)" checked={filters.showHierarchy} onChange={(v) => setFilters((f) => ({ ...f, showHierarchy: v }))} dot="#d4d4d8" />
-                      <GraphFilterCheck label="Блокирует" checked={filters.showBlocks} onChange={(v) => setFilters((f) => ({ ...f, showBlocks: v }))} dot="#d97706" />
-                      <GraphFilterCheck label="Связана с" checked={filters.showRelates} onChange={(v) => setFilters((f) => ({ ...f, showRelates: v }))} dot="#a1a1aa" />
-                      <GraphFilterCheck label="Визуальные (заметка/файл)" checked={filters.showCanvas} onChange={(v) => setFilters((f) => ({ ...f, showCanvas: v }))} dot="#0d9488" />
+                      <GraphFilterCheck label={t('filters.hierarchy')} checked={filters.showHierarchy} onChange={(v) => setFilters((f) => ({ ...f, showHierarchy: v }))} dot="#d4d4d8" />
+                      <GraphFilterCheck label={t('filters.blocks')} checked={filters.showBlocks} onChange={(v) => setFilters((f) => ({ ...f, showBlocks: v }))} dot="#d97706" />
+                      <GraphFilterCheck label={t('filters.relates')} checked={filters.showRelates} onChange={(v) => setFilters((f) => ({ ...f, showRelates: v }))} dot="#a1a1aa" />
+                      <GraphFilterCheck label={t('filters.canvasEdges')} checked={filters.showCanvas} onChange={(v) => setFilters((f) => ({ ...f, showCanvas: v }))} dot="#0d9488" />
                     </div>
                   </div>
                   <div>
-                    <Label className="mb-1 text-xs text-muted-foreground">Статусы</Label>
+                    <Label className="mb-1 text-xs text-muted-foreground">{t('filters.statuses')}</Label>
                     <div className="space-y-1">
                       {project.statuses.map((s) => (
                         <GraphFilterCheck
@@ -2235,7 +2251,7 @@ function GraphCanvas({
                     </div>
                   </div>
                   <div>
-                    <Label className="mb-1 text-xs text-muted-foreground">Исполнитель</Label>
+                    <Label className="mb-1 text-xs text-muted-foreground">{t('filters.assignee')}</Label>
                     <div className="space-y-1">
                       {users.map((u) => (
                         <GraphFilterCheck
@@ -2256,7 +2272,7 @@ function GraphCanvas({
                   {selectedNodeId && (
                     <div className="border-t pt-2">
                       <GraphFilterCheck
-                        label="Только поддерево от выбранной"
+                        label={t('filters.subtreeOnly')}
                         checked={!!filters.subtreeFrom}
                         onChange={(v) => setFilters((f) => ({ ...f, subtreeFrom: v ? selectedNodeId : null }))}
                       />
@@ -2276,7 +2292,7 @@ function GraphCanvas({
         <Panel position="top-right" className="!m-3 flex flex-col gap-1.5">
           <div className="flex overflow-hidden rounded-xl border bg-background/95 shadow-md backdrop-blur">
             <GraphToolbarBtn
-              title="Отменить (Ctrl+Z)"
+              title={t('toolbar.undo')}
               onClick={() => {
                 void graphHistory.undo().catch((e) => toast.error((e as Error).message))
               }}
@@ -2284,7 +2300,7 @@ function GraphCanvas({
               disabled={readOnly || !graphHistory.canUndo}
             />
             <GraphToolbarBtn
-              title="Повторить (Ctrl+Shift+Z)"
+              title={t('toolbar.redo')}
               onClick={() => {
                 void graphHistory.redo().catch((e) => toast.error((e as Error).message))
               }}
@@ -2293,29 +2309,29 @@ function GraphCanvas({
             />
           </div>
           <div className="flex overflow-hidden rounded-xl border bg-background/95 shadow-md backdrop-blur">
-            <GraphToolbarBtn title="Приблизить" onClick={() => zoomIn({ duration: 250 })} icon={<ZoomIn className="h-4 w-4" />} />
-            <GraphToolbarBtn title="Масштаб 100%" onClick={() => zoomTo(1, { duration: 300 })} icon={<Percent className="h-4 w-4" />} />
-            <GraphToolbarBtn title="Отдалить" onClick={() => zoomOut({ duration: 250 })} icon={<ZoomOut className="h-4 w-4" />} />
+            <GraphToolbarBtn title={t('toolbar.zoomIn')} onClick={() => zoomIn({ duration: 250 })} icon={<ZoomIn className="h-4 w-4" />} />
+            <GraphToolbarBtn title={t('toolbar.zoom100')} onClick={() => zoomTo(1, { duration: 300 })} icon={<Percent className="h-4 w-4" />} />
+            <GraphToolbarBtn title={t('toolbar.zoomOut')} onClick={() => zoomOut({ duration: 250 })} icon={<ZoomOut className="h-4 w-4" />} />
           </div>
           <div className="flex overflow-hidden rounded-xl border bg-background/95 shadow-md backdrop-blur">
-            <GraphToolbarBtn title="Вписать в экран" onClick={() => fitView({ padding: 0.25, duration: 300 })} icon={<Maximize2 className="h-4 w-4" />} />
+            <GraphToolbarBtn title={t('toolbar.fitView')} onClick={() => fitView({ padding: 0.25, duration: 300 })} icon={<Maximize2 className="h-4 w-4" />} />
             <GraphToolbarBtn
-              title={snap ? 'Сетка выравнивания: вкл (перетаскивание и ресайз по шагам 10px)' : 'Сетка выравнивания: выкл'}
+              title={snap ? t('toolbar.snapOn') : t('toolbar.snapOff')}
               onClick={toggleSnap}
               icon={<Magnet className={cn('h-4 w-4', snap && 'text-teal-700')} />}
             />
             <GraphToolbarBtn
-              title={guidesEnabled ? 'Направляющие: вкл' : 'Направляющие: выкл'}
+              title={guidesEnabled ? t('toolbar.guidesOn') : t('toolbar.guidesOff')}
               onClick={toggleGuides}
               icon={<Ruler className={cn('h-4 w-4', guidesEnabled && 'text-teal-700')} />}
             />
             <GraphToolbarBtn
-              title={readOnly ? 'Режим просмотра: вкл (перетаскивание и связи отключены)' : 'Режим просмотра: выкл'}
+              title={readOnly ? t('toolbar.readOnlyOn') : t('toolbar.readOnlyOff')}
               onClick={toggleReadOnly}
               icon={<Eye className={cn('h-4 w-4', readOnly && 'text-teal-700')} />}
             />
             <GraphToolbarBtn
-              title={showMinimap ? 'Скрыть миникарту' : 'Показать миникарту'}
+              title={showMinimap ? t('toolbar.minimapHide') : t('toolbar.minimapShow')}
               onClick={() => setShowMinimap((v) => !v)}
               icon={<MapIcon className={cn('h-4 w-4', showMinimap && 'text-teal-700')} />}
             />
@@ -2328,25 +2344,25 @@ function GraphCanvas({
           {selectedCount > 1 && (
             <div className="flex items-center gap-1.5 rounded-xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur">
               <span className="px-1 text-xs font-medium text-muted-foreground">
-                Выделено: {selectedCount}
+                {t('toolbar.selected', { count: selectedCount })}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
                 onClick={ctxSelectAll}
-                title="Выделить все ноды"
+                title={t('toolbar.selectAll')}
               >
-                <BoxSelect className="h-3.5 w-3.5" /> Все
+                <BoxSelect className="h-3.5 w-3.5" /> {t('toolbar.all')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
                 onClick={ctxDeselectAll}
-                title="Снять выделение (Esc)"
+                title={t('toolbar.deselect')}
               >
-                <X className="h-3.5 w-3.5" /> Снять
+                <X className="h-3.5 w-3.5" /> {t('toolbar.deselectShort')}
               </Button>
               <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
               <Button
@@ -2354,25 +2370,25 @@ function GraphCanvas({
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
                 onClick={() => wrapSelectedNodes()}
-                title="Объединить в рамку"
+                title={t('toolbar.wrapInFrame')}
               >
-                <BoxSelect className="h-3.5 w-3.5" /> Рамка
+                <BoxSelect className="h-3.5 w-3.5" /> {t('toolbar.frame')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs"
                 onClick={() => autoLayoutTree()}
-                title="Раскладка дерева (иерархия)"
+                title={t('toolbar.layoutTreeTitle')}
               >
-                <Waypoints className="h-3.5 w-3.5" /> Раскладка
+                <Waypoints className="h-3.5 w-3.5" /> {t('toolbar.layoutShort')}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1.5 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
-                  if (confirm(`Удалить выбранные ноды (${selectedCount}) с канваса?`)) {
+                  if (confirm(t('confirm.deleteSelectedNodes', { count: selectedCount }))) {
                     const selected = nodes.filter((x) => x.selected)
                     pushDeleteNodesHistory(selected.map((n) => n.id))
                     for (const n of selected) {
@@ -2380,9 +2396,9 @@ function GraphCanvas({
                     }
                   }
                 }}
-                title="Удалить выделенные ноды (Delete)"
+                title={t('toolbar.deleteSelected')}
               >
-                <Trash2 className="h-3.5 w-3.5" /> Удалить
+                <Trash2 className="h-3.5 w-3.5" /> {tc('delete')}
               </Button>
             </div>
           )}
@@ -2407,21 +2423,21 @@ function GraphCanvas({
           <div className="pointer-events-auto w-full max-w-md">
             <EmptyState
               icon={<Network className="h-10 w-10" />}
-              title="Канвас пуст"
-              description="Добавьте задачи на граф — связи blocks/relates и иерархия появятся автоматически, когда обе задачи на канвасе."
+              title={t('empty.title')}
+              description={t('empty.description')}
               action={
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   {tasks.length > 0 && (
                     <Button size="sm" className="gap-1.5" disabled={bulkAddGraph.isPending} onClick={() => addAllTasksToGraph()}>
                       <ListPlus className="h-4 w-4" />
-                      Добавить все задачи ({tasks.length})
+                      {t('empty.addAllTasks', { count: tasks.length })}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setAddTaskOpen(true)}>
-                    <SquarePlus className="h-4 w-4" /> Новая задача
+                    <SquarePlus className="h-4 w-4" /> {t('toolbar.newTask')}
                   </Button>
                   <Button size="sm" variant="outline" className="gap-1.5" onClick={() => createNote()}>
-                    <StickyNote className="h-4 w-4" /> Заметка
+                    <StickyNote className="h-4 w-4" /> {t('toolbar.note')}
                   </Button>
                 </div>
               }
@@ -2461,16 +2477,16 @@ function GraphCanvas({
                 return (
                   <>
                     {isTask && (
-                      <CtxItem icon={<SquareArrowOutUpRight className="h-3.5 w-3.5" />} label="Открыть задачу" onClick={() => ctxNodeAction('open')} />
+                      <CtxItem icon={<SquareArrowOutUpRight className="h-3.5 w-3.5" />} label={t('contextMenu.openTask')} onClick={() => ctxNodeAction('open')} />
                     )}
                     {node?.type === 'noteRF' && (
                       <>
-                        <CtxItem icon={<Pencil className="h-3.5 w-3.5" />} label="Редактировать" onClick={() => ctxNodeAction('edit')} />
-                        <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label="Предпросмотр" onClick={() => ctxNodeAction('preview')} />
+                        <CtxItem icon={<Pencil className="h-3.5 w-3.5" />} label={tc('edit')} onClick={() => ctxNodeAction('edit')} />
+                        <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label={t('nodes.preview')} onClick={() => ctxNodeAction('preview')} />
                       </>
                     )}
                     {node?.type === 'attachmentRF' && (
-                      <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label="Открыть" onClick={() => ctxNodeAction('preview')} />
+                      <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label={t('contextMenu.open')} onClick={() => ctxNodeAction('preview')} />
                     )}
 
                     {/* быстрая правка полей задач (одиночная и все выделенные) */}
@@ -2482,7 +2498,7 @@ function GraphCanvas({
                           open={ctxSubmenu === 'status'}
                           onToggle={() => setCtxSubmenu(ctxSubmenu === 'status' ? null : 'status')}
                           icon={<GitBranch className="h-3.5 w-3.5" />}
-                          label="Статус"
+                          label={t('contextMenu.status')}
                         >
                           {project.statuses.map((s) => (
                             <CtxItem key={s.id} dot={s.color} label={s.name} onClick={() => ctxPatchTasks('statusId', s.id)} />
@@ -2493,10 +2509,10 @@ function GraphCanvas({
                           open={ctxSubmenu === 'priority'}
                           onToggle={() => setCtxSubmenu(ctxSubmenu === 'priority' ? null : 'priority')}
                           icon={<Flame className="h-3.5 w-3.5" />}
-                          label="Приоритет"
+                          label={t('contextMenu.priority')}
                         >
                           {PRIORITIES.map((p) => (
-                            <CtxItem key={p} label={PRIORITY_LABELS_RU[p]} onClick={() => ctxPatchTasks('priority', p)} />
+                            <CtxItem key={p} label={priorityLabel(p)} onClick={() => ctxPatchTasks('priority', p)} />
                           ))}
                         </CtxSubmenu>
                         <CtxSubmenu
@@ -2504,7 +2520,7 @@ function GraphCanvas({
                           open={ctxSubmenu === 'assignee'}
                           onToggle={() => setCtxSubmenu(ctxSubmenu === 'assignee' ? null : 'assignee')}
                           icon={<UserCircle2 className="h-3.5 w-3.5" />}
-                          label="Исполнитель"
+                          label={t('contextMenu.assignee')}
                         >
                           {users.map((u) => (
                             <CtxItem
@@ -2515,10 +2531,10 @@ function GraphCanvas({
                             />
                           ))}
                           <CtxSeparator />
-                          <CtxItem label="Не назначен" onClick={() => ctxPatchTasks('assigneeId', null)} />
+                          <CtxItem label={t('contextMenu.unassigned')} onClick={() => ctxPatchTasks('assigneeId', null)} />
                         </CtxSubmenu>
                         <CtxSeparator />
-                        <CtxItem icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />} label="Готово" onClick={ctxMarkDone} />
+                        <CtxItem icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />} label={t('contextMenu.done')} onClick={ctxMarkDone} />
                       </>
                     )}
 
@@ -2527,11 +2543,11 @@ function GraphCanvas({
                       <>
                         <CtxSeparator />
                         <div className="px-2 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Выделено: {selectedCnt}
+                          {t('contextMenu.selected', { count: selectedCnt })}
                         </div>
                         <CtxItem
                           icon={<BoxSelect className="h-3.5 w-3.5" />}
-                          label="Объединить в рамку"
+                          label={t('contextMenu.wrapInFrame')}
                           onClick={() => {
                             closeCtxMenu()
                             wrapSelectedNodes()
@@ -2539,42 +2555,42 @@ function GraphCanvas({
                         />
                         <CtxItem
                           icon={<Trash2 className="h-3.5 w-3.5" />}
-                          label={`Удалить выбранные (${selectedCnt})`}
+                          label={t('contextMenu.deleteSelected', { count: selectedCnt })}
                           danger
                           onClick={() => ctxNodeAction('deleteSelected')}
                         />
-                        <CtxItem icon={<X className="h-3.5 w-3.5" />} label="Снять выделение" onClick={ctxDeselectAll} />
+                        <CtxItem icon={<X className="h-3.5 w-3.5" />} label={t('contextMenu.deselect')} onClick={ctxDeselectAll} />
                       </>
                     )}
                     <CtxSeparator />
-                    <CtxItem icon={<Trash2 className="h-3.5 w-3.5" />} label="Удалить" danger onClick={() => ctxNodeAction('delete')} />
+                    <CtxItem icon={<Trash2 className="h-3.5 w-3.5" />} label={tc('delete')} danger onClick={() => ctxNodeAction('delete')} />
                   </>
                 )
               })()
             ) : (
               <>
-                <CtxItem icon={<SquarePlus className="h-3.5 w-3.5" />} label="Новая задача здесь…" onClick={() => ctxCreate('newTask')} />
-                <CtxItem icon={<Search className="h-3.5 w-3.5" />} label="Существующая задача…" onClick={() => ctxCreate('pickTask')} />
+                <CtxItem icon={<SquarePlus className="h-3.5 w-3.5" />} label={t('contextMenu.newTaskHere')} onClick={() => ctxCreate('newTask')} />
+                <CtxItem icon={<Search className="h-3.5 w-3.5" />} label={t('contextMenu.existingTask')} onClick={() => ctxCreate('pickTask')} />
                 <CtxSubmenu
                   id="notes"
                   open={ctxSubmenu === 'notes'}
                   onToggle={() => setCtxSubmenu(ctxSubmenu === 'notes' ? null : 'notes')}
                   icon={<StickyNote className="h-3.5 w-3.5" />}
-                  label="Заметка"
+                  label={t('contextMenu.note')}
                 >
-                  <CtxItem icon={<Pencil className="h-3.5 w-3.5" />} label="Пустая" onClick={() => ctxCreate('note')} />
-                  {NOTE_TEMPLATES.map((t) => (
-                    <CtxItem key={t.id} label={`${t.icon} ${t.label}`} onClick={() => ctxCreate('noteTpl', t.id)} />
+                  <CtxItem icon={<Pencil className="h-3.5 w-3.5" />} label={t('contextMenu.emptyNote')} onClick={() => ctxCreate('note')} />
+                  {noteTemplates.map((tpl) => (
+                    <CtxItem key={tpl.id} label={`${tpl.icon} ${tpl.label}`} onClick={() => ctxCreate('noteTpl', tpl.id)} />
                   ))}
                 </CtxSubmenu>
-                <CtxItem icon={<Upload className="h-3.5 w-3.5" />} label="Загрузить файл здесь…" onClick={() => ctxCreate('file')} />
-                <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label="Рамка здесь…" onClick={() => ctxCreate('group')} />
+                <CtxItem icon={<Upload className="h-3.5 w-3.5" />} label={t('contextMenu.uploadFileHere')} onClick={() => ctxCreate('file')} />
+                <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label={t('contextMenu.frameHere')} onClick={() => ctxCreate('group')} />
                 <CtxSeparator />
-                <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label="Выделить всё" onClick={ctxSelectAll} />
-                <CtxItem icon={<GitBranch className="h-3.5 w-3.5" />} label="Дерево" onClick={() => { closeCtxMenu(); autoLayoutTree() }} />
-                <CtxItem icon={<ArrowDownCircle className="h-3.5 w-3.5" />} label="Столб" onClick={() => { closeCtxMenu(); autoLayoutColumn() }} />
-                <CtxItem icon={<ArrowRight className="h-3.5 w-3.5" />} label="Полоса зависимостей" onClick={() => { closeCtxMenu(); autoLayoutStrip() }} />
-                <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label="Вписать в экран" onClick={() => { closeCtxMenu(); fitView({ padding: 0.25, duration: 300 }) }} />
+                <CtxItem icon={<BoxSelect className="h-3.5 w-3.5" />} label={t('contextMenu.selectAll')} onClick={ctxSelectAll} />
+                <CtxItem icon={<GitBranch className="h-3.5 w-3.5" />} label={t('contextMenu.tree')} onClick={() => { closeCtxMenu(); autoLayoutTree() }} />
+                <CtxItem icon={<ArrowDownCircle className="h-3.5 w-3.5" />} label={t('contextMenu.column')} onClick={() => { closeCtxMenu(); autoLayoutColumn() }} />
+                <CtxItem icon={<ArrowRight className="h-3.5 w-3.5" />} label={t('contextMenu.dependencyStrip')} onClick={() => { closeCtxMenu(); autoLayoutStrip() }} />
+                <CtxItem icon={<Maximize2 className="h-3.5 w-3.5" />} label={t('toolbar.fitView')} onClick={() => { closeCtxMenu(); fitView({ padding: 0.25, duration: 300 }) }} />
               </>
             )}
           </div>
@@ -2596,7 +2612,7 @@ function GraphCanvas({
       <Dialog open={!!connectDraft} onOpenChange={(v) => !v && setConnectDraft(null)}>
         <DialogContent className={cn('sm:max-w-sm', connectDraft?.mode === 'mixed' && 'sm:max-w-lg')}>
           <DialogHeader>
-            <DialogTitle>Тип связи</DialogTitle>
+            <DialogTitle>{t('connectDialog.title')}</DialogTitle>
           </DialogHeader>
           <div
             className={cn(
@@ -2610,8 +2626,8 @@ function GraphCanvas({
               onClick={() => submitConnect('blocks')}
             >
               <span className="text-lg leading-none">→</span>
-              <span className="w-full text-sm font-medium">Блокирует</span>
-              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">стрелка по направлению</span>
+              <span className="w-full text-sm font-medium">{t('connectDialog.blocks')}</span>
+              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">{t('connectDialog.blocksHint')}</span>
             </Button>
             <Button
               variant="outline"
@@ -2619,8 +2635,8 @@ function GraphCanvas({
               onClick={() => submitConnect('relates')}
             >
               <span className="text-lg leading-none">↔</span>
-              <span className="w-full text-sm font-medium">Связана с</span>
-              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">без направления</span>
+              <span className="w-full text-sm font-medium">{t('connectDialog.relates')}</span>
+              <span className="w-full text-balance text-xs leading-snug text-muted-foreground">{t('connectDialog.relatesHint')}</span>
             </Button>
             {connectDraft?.mode === 'mixed' && (
               <Button
@@ -2629,8 +2645,8 @@ function GraphCanvas({
                 onClick={() => submitConnect('canvas')}
               >
                 <span className="text-lg leading-none">~</span>
-                <span className="w-full text-sm font-medium">Просто связь</span>
-                <span className="w-full text-balance text-xs leading-snug text-muted-foreground">визуально</span>
+                <span className="w-full text-sm font-medium">{t('connectDialog.canvas')}</span>
+                <span className="w-full text-balance text-xs leading-snug text-muted-foreground">{t('connectDialog.canvasHint')}</span>
               </Button>
             )}
           </div>
@@ -2641,22 +2657,22 @@ function GraphCanvas({
       <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Новая задача на канвасе</DialogTitle>
+            <DialogTitle>{t('dialogs.newTaskTitle')}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-1">
-            <div className="flex gap-1 rounded-lg border p-1" role="group" aria-label="Тип задачи">
-              {TASK_TYPES.map((t) => (
+            <div className="flex gap-1 rounded-lg border p-1" role="group" aria-label={t('dialogs.taskTypeAria')}>
+              {TASK_TYPES.map((taskType) => (
                 <button
-                  key={t}
+                  key={taskType}
                   type="button"
-                  onClick={() => setNewTaskType(t)}
+                  onClick={() => setNewTaskType(taskType)}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1 rounded-md px-1 py-1.5 text-xs font-medium',
-                    newTaskType === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    newTaskType === taskType ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
-                  <TypeIcon type={t} className="h-3.5 w-3.5" />
-                  {TYPE_LABELS_RU[t]}
+                  <TypeIcon type={taskType} className="h-3.5 w-3.5" />
+                  {typeLabel(taskType)}
                 </button>
               ))}
             </div>
@@ -2665,12 +2681,12 @@ function GraphCanvas({
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && createNewTask()}
-              placeholder="Название задачи"
+              placeholder={t('dialogs.taskTitlePlaceholder')}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddTaskOpen(false)}>Отмена</Button>
-            <Button onClick={createNewTask} disabled={!newTaskTitle.trim()}>Создать ноду</Button>
+            <Button variant="outline" onClick={() => setAddTaskOpen(false)}>{tc('cancel')}</Button>
+            <Button onClick={createNewTask} disabled={!newTaskTitle.trim()}>{t('dialogs.createNode')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2679,12 +2695,12 @@ function GraphCanvas({
       <Dialog open={pickTaskOpen} onOpenChange={setPickTaskOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Добавить существующую задачу</DialogTitle>
+            <DialogTitle>{t('dialogs.pickTaskTitle')}</DialogTitle>
           </DialogHeader>
           <Command>
-            <CommandInput placeholder="Поиск по ключу или названию…" />
+            <CommandInput placeholder={t('dialogs.pickTaskSearch')} />
             <CommandList className="max-h-72">
-              <CommandEmpty>Все задачи проекта уже на канвасе</CommandEmpty>
+              <CommandEmpty>{t('dialogs.allTasksOnCanvas')}</CommandEmpty>
               <CommandGroup>
                 {tasksWithoutNode.map((t) => (
                   <CommandItem key={t.id} value={`${t.key} ${t.title}`} onSelect={() => addExistingTask(t.id)}>
@@ -2701,7 +2717,7 @@ function GraphCanvas({
 
       {isLoading && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-          <Badge variant="secondary" className="animate-pulse">Загрузка графа…</Badge>
+          <Badge variant="secondary" className="animate-pulse">{t('loading')}</Badge>
         </div>
       )}
 
@@ -2709,7 +2725,7 @@ function GraphCanvas({
       <Dialog open={!!noteDialog} onOpenChange={(v) => !v && setNoteDialog(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Заметка</DialogTitle>
+            <DialogTitle>{t('dialogs.noteTitle')}</DialogTitle>
           </DialogHeader>
           {noteEdit ? (
             <Textarea
@@ -2717,7 +2733,7 @@ function GraphCanvas({
               onChange={(e) => setNoteDraft(e.target.value)}
               rows={12}
               className="font-mono text-[13px]"
-              aria-label="Текст заметки"
+              aria-label={t('nodes.noteTextAria')}
               autoFocus
             />
           ) : (
@@ -2742,7 +2758,7 @@ function GraphCanvas({
           <DialogFooter>
             {noteEdit ? (
               <>
-                <Button variant="outline" onClick={() => setNoteEdit(false)}>Отмена</Button>
+                <Button variant="outline" onClick={() => setNoteEdit(false)}>{tc('cancel')}</Button>
                 <Button
                   onClick={() => {
                     if (!noteDialog) return
@@ -2750,18 +2766,18 @@ function GraphCanvas({
                     setNodes((nds) => nds.map((x) => (x.id === noteDialog.id ? { ...x, data: { ...x.data, text: noteDraft } } : x)))
                     setNoteDialog({ ...noteDialog, text: noteDraft })
                     setNoteEdit(false)
-                    toast.success('Заметка сохранена')
+                    toast.success(t('toasts.noteSaved'))
                   }}
                 >
-                  Сохранить
+                  {tc('save')}
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="outline" className="gap-1.5" onClick={() => setNoteEdit(true)}>
-                  <Pencil className="h-3.5 w-3.5" /> Редактировать
+                  <Pencil className="h-3.5 w-3.5" /> {tc('edit')}
                 </Button>
-                <Button onClick={() => setNoteDialog(null)}>Закрыть</Button>
+                <Button onClick={() => setNoteDialog(null)}>{t('dialogs.close')}</Button>
               </>
             )}
           </DialogFooter>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Handle, NodeResizer, NodeToolbar, Position, type NodeProps } from '@xyflow/react'
 import { ChevronDown, ChevronRight, Pencil, Trash2, BoxSelect, Palette } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useZoomBand } from '@/components/graph/use-zoom-band'
 import { groupColorStyles, normalizeGroupColor } from '@/lib/graph-group-color'
@@ -30,6 +31,7 @@ export interface GroupNodeData extends Record<string, unknown> {
 }
 
 export function GroupNodeCard({ data, selected, id }: NodeProps) {
+  const t = useTranslations('graph')
   const d = data as GroupNodeData
   const band = useZoomBand()
   const far = band === 'far'
@@ -83,7 +85,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
         >
           <button
             type="button"
-            title="Разгруппировать"
+            title={t('group.ungroup')}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation()
@@ -94,7 +96,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
           </button>
           <button
             type="button"
-            title="Переименовать"
+            title={t('group.rename')}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={(e) => {
               e.stopPropagation()
@@ -108,7 +110,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
             <PopoverAnchor asChild>
               <button
                 type="button"
-                title="Цвет рамки"
+                title={t('group.borderColor')}
                 className={cn(
                   'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground',
                   colorOpen && 'bg-muted text-foreground'
@@ -141,11 +143,11 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
           <button
             type="button"
-            title="Удалить рамку (содержимое останется)"
+            title={t('group.deleteFrame')}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation()
-              d.onDeleteNode?.(id, 'рамку (содержимое останется)')
+              d.onDeleteNode?.(id, t('group.deleteFrameLabel'))
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -185,7 +187,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
           type="button"
           className="nodrag nopan rounded p-0.5 hover:bg-black/5 dark:hover:bg-white/10"
           style={{ color: palette.headerText }}
-          title={d.collapsed ? 'Развернуть' : 'Свернуть'}
+          title={d.collapsed ? t('group.expand') : t('group.collapse')}
           onClick={(e) => {
             e.stopPropagation()
             d.onToggleCollapse?.(id)
@@ -201,8 +203,8 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
             onChange={(e) => setDraft(e.target.value)}
             onBlur={() => {
               setEditing(false)
-              const t = draft.trim() || 'Пачка'
-              if (t !== d.title) d.onRename?.(id, t)
+              const title = draft.trim() || t('group.defaultTitle')
+              if (title !== d.title) d.onRename?.(id, title)
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
@@ -224,7 +226,7 @@ export function GroupNodeCard({ data, selected, id }: NodeProps) {
               setEditing(true)
             }}
           >
-            {far ? d.title : d.title || 'Пачка'}
+            {far ? d.title : d.title || t('group.defaultTitle')}
           </button>
         )}
         <span

@@ -1,18 +1,22 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   CalendarDays, Check, ListTree, Plus, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ParentTaskPicker } from '@/components/tasks/parent-task-picker'
 import { MarkdownEditor, MarkdownView } from '@/components/shared/markdown'
 import { LabelChip, TypeIcon } from '@/components/shared/bits'
 import { useCreateTask, useTasks, useUpdateTask, useUploadAttachments } from '@/lib/api'
-import { ALLOWED_CHILDREN, TYPE_LABELS_RU } from '@/lib/config'
-import { formatDate, isOverdue, toDateInputValue } from '@/lib/format'
+import { childTypesForParent, parentTypesForChild } from '@/lib/config'
+import { isOverdue, toDateInputValue } from '@/lib/format'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import type { TaskFullDto, StatusDto, UserDto } from '@/lib/types'
 
@@ -26,6 +30,10 @@ interface DetailsProps {
 }
 
 export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTask }: DetailsProps) {
+  const t = useTranslations('taskPanel')
+  const tc = useTranslations('common')
+  const { typeLabel } = useEnumLabels()
+  const { formatDate } = useFormatters()
   void _users
   const { data: allTasks = [] } = useTasks(task.projectId)
   const createTask = useCreateTask()
@@ -60,14 +68,13 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
   // [v1.1] кандидаты в родители по допустимым типам (п. 4.1.1)
   // (лимит глубины снят — дерево любой вложенности)
   const parentCandidates = useMemo(() => {
-    const allowedTypes = (Object.keys(ALLOWED_CHILDREN) as string[]).filter((pt) =>
-      ALLOWED_CHILDREN[pt].includes(task.type)
-    )
+    const allowedTypes = parentTypesForChild(task.type)
     return allTasks.filter((t) => t.id !== task.id && allowedTypes.includes(t.type))
   }, [allTasks, task.id, task.type])
 
+  const childTypes = childTypesForParent(task.type)
   const doneChildren = task.children.filter((c) => (statusById.get(c.statusId)?.category ?? 0) === 3).length
-  const defaultChildType = ALLOWED_CHILDREN[task.type]?.[0] ?? 'task'
+  const [subtaskType, setSubtaskType] = useState<string>(childTypes[0] ?? 'task')
 
   function addLabel() {
     const l = labelInput.trim()
@@ -95,7 +102,7 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
     createTask.mutate(
       {
         projectId: task.projectId,
-        type: defaultChildType,
+        type: subtaskType,
         title,
         parentId: task.id,
         assigneeId: task.assigneeId,
@@ -124,7 +131,7 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
   return (
     <div className="space-y-5 p-4">
       {/* Описание (ФТ-2.7): просмотр/редактирование, тулбар, картинки-вложения */}
-      <section aria-label="Описание">
+      <section aria-label={t('description')}>
         {editingDesc ? (
           <div className="space-y-2">
             <MarkdownEditor
@@ -142,19 +149,19 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
                 }}
                 disabled={upload.isPending}
               >
-                Сохранить
+                {tc('save')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setDescDraft(task.description); setEditingDesc(false) }}>
-                Отмена
+                {tc('cancel')}
               </Button>
             </div>
           </div>
         ) : (
           <div ref={descRef}>
             <div className="group flex items-center justify-between">
-              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Описание</h3>
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('description')}</h3>
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => setEditingDesc(true)}>
-                Изменить
+                {t('edit')}
               </Button>
             </div>
             <MarkdownView source={task.description} />
@@ -163,8 +170,8 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
       </section>
 
       {/* Поля: срок, родитель */}
-      <section aria-label="Поля задачи" className="grid grid-cols-[130px_minmax(0,1fr)] items-center gap-y-3 text-sm">
-        <span className="text-muted-foreground">Срок</span>
+      <section aria-label={t('fieldsAria')} className="grid grid-cols-[130px_minmax(0,1fr)] items-center gap-y-3 text-sm">
+        <span className="text-muted-foreground">{t('dueDate')}</span>
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="relative">
             <CalendarDays className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -173,13 +180,13 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
               value={toDateInputValue(task.dueDate)}
               onChange={(e) => onPatch({ dueDate: e.target.value ? new Date(e.target.value + 'T12:00:00').toISOString() : null }).catch(() => {})}
               className="h-8 w-[150px] pl-8 text-sm"
-              aria-label="Срок задачи"
+              aria-label={t('dueDateAria')}
             />
           </div>
           {[
-            ['Сегодня', 0],
-            ['Завтра', 1],
-            ['+7 дней', 7],
+            [t('today'), 0],
+            [t('tomorrow'), 1],
+            [t('plus7Days'), 7],
           ].map(([label, days]) => (
             <button
               key={label as string}
@@ -200,21 +207,21 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
               className="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
               onClick={() => onPatch({ dueDate: null }).catch(() => {})}
             >
-              <X className="h-3 w-3" /> Очистить
+              <X className="h-3 w-3" /> {t('clear')}
             </button>
           )}
           {isOverdue(task.dueDate, currentStatus?.category ?? 0) && (
-            <span className="text-[11px] font-medium text-red-600">просрочено ({formatDate(task.dueDate)})</span>
+            <span className="text-[11px] font-medium text-red-600">{t('overdue', { date: formatDate(task.dueDate) })}</span>
           )}
         </div>
 
-        <span className="text-muted-foreground">Родитель</span>
+        <span className="text-muted-foreground">{t('parent')}</span>
         <ParentTaskPicker task={task} parentCandidates={parentCandidates} onPatch={onPatch} />
       </section>
 
       {/* Метки (ФТ-2.7) */}
-      <section aria-label="Метки">
-        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Метки</h3>
+      <section aria-label={t('labels')}>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('labels')}</h3>
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-1.5">
           {task.labels.map((l) => (
             <LabelChip key={l} label={l} onRemove={() => onPatch({ labels: task.labels.filter((x) => x !== l) }).catch(() => {})} />
@@ -228,18 +235,18 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
                 addLabel()
               }
             }}
-            placeholder={task.labels.length === 0 ? 'Enter — добавить' : ''}
+            placeholder={task.labels.length === 0 ? t('labelAddPlaceholder') : ''}
             className="min-w-[110px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground/60"
-            aria-label="Новая метка"
+            aria-label={t('newLabel')}
           />
         </div>
       </section>
 
       {/* Подзадачи: чекбокс-переход в «Готово», добавление, прогресс */}
-      <section aria-label="Подзадачи">
+      <section aria-label={t('subtasks')}>
         <div className="mb-1.5 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <ListTree className="h-3.5 w-3.5" /> Подзадачи
+            <ListTree className="h-3.5 w-3.5" /> {t('subtasks')}
           </h3>
           {task.children.length > 0 && (
             <span className="text-xs text-muted-foreground">
@@ -263,7 +270,7 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
                     'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                     cDone ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/40 hover:border-foreground'
                   )}
-                  aria-label={cDone ? `Вернуть ${c.key} в работу` : `Отметить ${c.key} выполненной`}
+                  aria-label={cDone ? t('markUndone', { key: c.key }) : t('markDone', { key: c.key })}
                 >
                   {cDone && <Check className="h-3 w-3" />}
                 </button>
@@ -276,9 +283,24 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
             )
           })}
         </ul>
-        {ALLOWED_CHILDREN[task.type]?.length ? (
+        {childTypes.length ? (
           <div className="mt-1.5 flex items-center gap-1.5">
-            <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+            <Select value={subtaskType} onValueChange={setSubtaskType}>
+              <SelectTrigger className="h-8 w-[108px] shrink-0 gap-1 px-2" aria-label={t('subtaskType')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {childTypes.map((ct) => (
+                  <SelectItem key={ct} value={ct}>
+                    <span className="flex items-center gap-1.5">
+                      <TypeIcon type={ct} className="h-3.5 w-3.5" />
+                      {typeLabel(ct)}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               value={subtaskTitle}
               onChange={(e) => setSubtaskTitle(e.target.value)}
@@ -288,14 +310,14 @@ export function PanelDetails({ task, statuses, users: _users, onPatch, onOpenTas
                   addSubtask()
                 }
               }}
-              placeholder={`Добавить (${TYPE_LABELS_RU[defaultChildType].toLowerCase()}) — Enter`}
-              className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
-              aria-label="Новая подзадача"
+              placeholder={t('addSubtask', { type: typeLabel(subtaskType).toLowerCase() })}
+              className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
+              aria-label={t('newSubtask')}
             />
             {createTask.isPending && <span className="text-xs text-muted-foreground">…</span>}
           </div>
         ) : (
-          <p className="mt-1 text-xs text-muted-foreground">Тип «{TYPE_LABELS_RU[task.type]}» не может иметь подзадач</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('noSubtasksForType', { type: typeLabel(task.type) })}</p>
         )}
       </section>
     </div>

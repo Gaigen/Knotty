@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { jsonError } from '@/lib/server/context'
+import { apiError } from '@/lib/server/i18n'
 import { buildProjectExport, stripBundleInternals } from '@/lib/server/project-export'
 
 type Params = { params: Promise<{ id: string }> }
@@ -9,7 +10,7 @@ export async function GET(_req: Request, { params }: Params) {
   try {
     const { id } = await params
     const project = await db.project.findUnique({ where: { id }, select: { id: true } })
-    if (!project) return Response.json({ error: 'Проект не найден' }, { status: 404 })
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const exportData = stripBundleInternals(await buildProjectExport(id))
     const key = exportData.project.key
@@ -21,6 +22,6 @@ export async function GET(_req: Request, { params }: Params) {
       },
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

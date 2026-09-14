@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 const taskLinkSchema = z.object({
   type: z.string(),
@@ -88,10 +88,10 @@ export const projectExportV1Schema = z.object({
 
 export type ProjectExportV1 = z.infer<typeof projectExportV1Schema>
 
-export function parseProjectExportV1(raw: unknown): ProjectExportV1 {
+export async function parseProjectExportV1(raw: unknown): Promise<ProjectExportV1> {
   const result = projectExportV1Schema.safeParse(raw)
   if (!result.success) {
-    throw new ApiError('Неверный формат файла (ожидается task-graph-tracker/v1)')
+    throw await apiError('invalidExportFormat')
   }
   return result.data
 }

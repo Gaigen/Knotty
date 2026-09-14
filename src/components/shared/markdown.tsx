@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -71,6 +72,8 @@ export function MarkdownView({
   interactiveCheckboxes?: boolean
   onSourceChange?: (next: string) => void
 }) {
+  const t = useTranslations('shared')
+  const tc = useTranslations('common')
   const canToggle = interactiveCheckboxes && onSourceChange
   const [optimistic, setOptimistic] = useState<string | null>(null)
   const displaySource = optimistic ?? source
@@ -86,7 +89,7 @@ export function MarkdownView({
   }
 
   if (!displaySource?.trim()) {
-    return <p className={cn('text-sm text-muted-foreground italic', className)}>Нет описания</p>
+    return <p className={cn('text-sm text-muted-foreground italic', className)}>{t('noDescription')}</p>
   }
 
   let checkboxIndex = 0
@@ -232,17 +235,6 @@ interface ToolbarAction {
   prefix?: string
 }
 
-const ACTIONS: ToolbarAction[] = [
-  { icon: <Bold className="h-4 w-4" />, title: 'Жирный', wrap: ['**', '**'] },
-  { icon: <Italic className="h-4 w-4" />, title: 'Курсив', wrap: ['_', '_'] },
-  { icon: <Code className="h-4 w-4" />, title: 'Код', wrap: ['`', '`'] },
-  { icon: <Heading2 className="h-4 w-4" />, title: 'Заголовок', prefix: '## ' },
-  { icon: <List className="h-4 w-4" />, title: 'Список', prefix: '- ' },
-  { icon: <ListChecks className="h-4 w-4" />, title: 'Чекбокс', prefix: '- [ ] ' },
-  { icon: <Link2 className="h-4 w-4" />, title: 'Ссылка', wrap: ['[', '](https://)'] },
-  { icon: <ImageIcon className="h-4 w-4" />, title: 'Картинка', wrap: ['![описание](', ')'] },
-]
-
 /**
  * Редактор Markdown (ФТ-2.7): textarea + тулбар + переключение просмотр/редактирование.
  * v1.0-опция «plain textarea + preview» из открытого вопроса п. 10.2.
@@ -262,8 +254,24 @@ export function MarkdownEditor({
   className?: string
   onUploadImage?: (file: File) => void
 }) {
+  const t = useTranslations('shared')
+  const tc = useTranslations('common')
   const [preview, setPreview] = useState(false)
   const ref = useRef<HTMLTextAreaElement>(null)
+
+  const actions = useMemo<ToolbarAction[]>(
+    () => [
+      { icon: <Bold className="h-4 w-4" />, title: t('mdBold'), wrap: ['**', '**'] },
+      { icon: <Italic className="h-4 w-4" />, title: t('mdItalic'), wrap: ['_', '_'] },
+      { icon: <Code className="h-4 w-4" />, title: t('mdCode'), wrap: ['`', '`'] },
+      { icon: <Heading2 className="h-4 w-4" />, title: t('mdHeading'), prefix: '## ' },
+      { icon: <List className="h-4 w-4" />, title: t('mdList'), prefix: '- ' },
+      { icon: <ListChecks className="h-4 w-4" />, title: t('mdCheckbox'), prefix: '- [ ] ' },
+      { icon: <Link2 className="h-4 w-4" />, title: t('mdLink'), wrap: ['[', '](https://)'] },
+      { icon: <ImageIcon className="h-4 w-4" />, title: t('mdImage'), wrap: [t('mdImageWrap'), ')'] },
+    ],
+    [t]
+  )
 
   function applyAction(action: ToolbarAction) {
     const ta = ref.current
@@ -300,7 +308,7 @@ export function MarkdownEditor({
     <div className={cn('rounded-lg border bg-background', className)}>
       <div className="flex items-center justify-between border-b px-1.5 py-1">
         <div className="flex items-center gap-0.5">
-          {ACTIONS.map((a) => (
+          {actions.map((a) => (
             <button
               key={a.title}
               type="button"
@@ -313,7 +321,7 @@ export function MarkdownEditor({
           ))}
           {onUploadImage && (
             <label
-              title="Загрузить картинку"
+              title={t('uploadImage')}
               className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <Undo2 className="h-4 w-4 rotate-90" />
@@ -338,7 +346,7 @@ export function MarkdownEditor({
           onClick={() => setPreview((p) => !p)}
         >
           {preview ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          {preview ? 'Редактировать' : 'Предпросмотр'}
+          {preview ? tc('edit') : t('preview')}
         </Button>
       </div>
       {preview ? (
@@ -350,7 +358,7 @@ export function MarkdownEditor({
           ref={ref}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder ?? 'Поддерживается Markdown: **жирный**, `код`, списки, чекбоксы…'}
+          placeholder={placeholder ?? t('markdownPlaceholder')}
           className="w-full resize-y rounded-b-lg bg-transparent p-3 font-mono text-[13px] leading-relaxed outline-none placeholder:text-muted-foreground/60"
           style={{ minHeight }}
           onDrop={handleDrop}

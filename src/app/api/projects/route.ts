@@ -2,7 +2,8 @@ import { db } from '@/lib/db'
 import { DEFAULT_STATUSES, PROJECT_COLORS } from '@/lib/config'
 import type { ProjectSummaryDto } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError, isValidProjectKey, suggestProjectKey } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
+import { isValidProjectKey, suggestProjectKey } from '@/lib/server/validation'
 
 /** Сводка проектов с счётчиками по категориям статусов (для лаунчера) */
 async function buildSummaries(userId: string): Promise<ProjectSummaryDto[]> {
@@ -56,7 +57,7 @@ export async function GET() {
     const summaries = await buildSummaries(user.id)
     return Response.json(summaries)
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -73,13 +74,13 @@ export async function POST(req: Request) {
     void user
     const body = await readJson<CreateProjectBody>(req)
     const name = (body.name ?? '').trim()
-    if (!name) throw new ApiError('Название проекта обязательно')
-    if (name.length > 120) throw new ApiError('Название слишком длинное (макс. 120 символов)')
+    if (!name) throw await apiError('projectNameRequired')
+    if (name.length > 120) throw await apiError('projectNameTooLong')
 
     const key = (body.key ?? suggestProjectKey(name)).trim().toUpperCase()
-    if (!isValidProjectKey(key)) throw new ApiError('Ключ проекта: 2–5 латинских букв')
+    if (!isValidProjectKey(key)) throw await apiError('invalidProjectKey')
     const exists = await db.project.findUnique({ where: { key }, select: { id: true } })
-    if (exists) throw new ApiError(`Ключ «${key}» уже занят`)
+    if (exists) throw await apiError('projectKeyTaken', { key })
 
     const color = PROJECT_COLORS.includes(body.color ?? '') ? body.color! : PROJECT_COLORS[0]
 
@@ -98,6 +99,6 @@ export async function POST(req: Request) {
 
     return Response.json({ id: project.id }, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

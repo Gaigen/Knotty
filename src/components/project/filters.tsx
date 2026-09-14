@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 import { Filter, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Kbd, UserAvatar, labelColor } from '@/components/shared/bits'
-import { PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
+import { PRIORITIES, TASK_TYPES } from '@/lib/config'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useLocale } from 'next-intl'
 import type { ProjectDetailDto, TaskRowDto, UserDto } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -99,14 +102,17 @@ export function FiltersBar({
   searchRef,
   children,
 }: FiltersBarProps) {
+  const locale = useLocale()
+  const tf = useTranslations('tasks.filters')
+  const { typeLabel, priorityLabel } = useEnumLabels()
   const allLabels = useMemo(() => {
     const s = new Set<string>()
     tasks?.forEach((t) => t.labels.forEach((l) => s.add(l)))
-    return [...s].sort((a, b) => a.localeCompare(b, 'ru'))
-  }, [tasks])
+    return [...s].sort((a, b) => a.localeCompare(b, locale))
+  }, [tasks, locale])
 
   const active = isFiltersActive(filters)
-  const shownText = active || search ? `Показано ${shown} из ${total}` : `Всего: ${total}`
+  const shownText = active || search ? tf('shownOf', { shown, total }) : tf('total', { total })
 
   function toggle(field: keyof FiltersState, value: string) {
     const arr = filters[field] as string[]
@@ -122,9 +128,9 @@ export function FiltersBar({
           ref={searchRef}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Поиск: название, ключ, метка, текст…"
+          placeholder={tf('searchPlaceholder')}
           className="h-8 pl-8 pr-8 text-sm"
-          aria-label="Поиск задач"
+          aria-label={tf('searchAria')}
         />
         <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 hidden sm:block">
           <Kbd>/</Kbd>
@@ -135,13 +141,13 @@ export function FiltersBar({
         <PopoverTrigger asChild>
           <Button variant="outline" size="sm" className={cn('h-8 gap-1.5', active && 'border-teal-700/50 text-teal-800')}>
             <Filter className="h-3.5 w-3.5" />
-            Фильтры
+            {tf('filters')}
             {active && <Badge className="ml-1 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none">{countActive(filters)}</Badge>}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-80">
           <div className="max-h-[420px] space-y-4 overflow-y-auto custom-scroll pr-1">
-            <FilterSection title="Статус">
+            <FilterSection title={tf('status')}>
               {project.statuses.map((s) => (
                 <FilterCheck
                   key={s.id}
@@ -152,7 +158,7 @@ export function FiltersBar({
                 />
               ))}
             </FilterSection>
-            <FilterSection title="Исполнитель">
+            <FilterSection title={tf('assignee')}>
               {users.map((u) => (
                 <FilterCheck
                   key={u.id}
@@ -165,32 +171,32 @@ export function FiltersBar({
               <FilterCheck
                 checked={filters.assigneeIds.includes('none')}
                 onToggle={() => toggle('assigneeIds', 'none')}
-                label="Не назначен"
+                label={tf('unassigned')}
                 avatar={<UserAvatar user={null} size={18} />}
               />
             </FilterSection>
-            <FilterSection title="Приоритет">
+            <FilterSection title={tf('priority')}>
               {PRIORITIES.map((p) => (
                 <FilterCheck
                   key={p}
                   checked={filters.priorities.includes(p)}
                   onToggle={() => toggle('priorities', p)}
-                  label={PRIORITY_LABELS_RU[p]}
+                  label={priorityLabel(p)}
                 />
               ))}
             </FilterSection>
-            <FilterSection title="Тип">
+            <FilterSection title={tf('type')}>
               {TASK_TYPES.map((t) => (
                 <FilterCheck
                   key={t}
                   checked={filters.types.includes(t)}
                   onToggle={() => toggle('types', t)}
-                  label={TYPE_LABELS_RU[t]}
+                  label={typeLabel(t)}
                 />
               ))}
             </FilterSection>
             {allLabels.length > 0 && (
-              <FilterSection title="Метки">
+              <FilterSection title={tf('labels')}>
                 <div className="flex flex-wrap gap-1.5">
                   {allLabels.map((l) => {
                     const on = filters.labels.includes(l)
@@ -237,12 +243,12 @@ export function FiltersBar({
             })}
             {filters.priorities.map((p) => (
               <button key={p} onClick={() => toggle('priorities', p)} className="group inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
-                {PRIORITY_LABELS_RU[p]} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
+                {priorityLabel(p)} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
               </button>
             ))}
             {filters.types.map((t) => (
               <button key={t} onClick={() => toggle('types', t)} className="group inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
-                {TYPE_LABELS_RU[t]} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
+                {typeLabel(t)} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
               </button>
             ))}
             {filters.labels.map((l) => (
@@ -254,7 +260,7 @@ export function FiltersBar({
               const u = users.find((x) => x.id === id)
               return (
                 <button key={id} onClick={() => toggle('assigneeIds', id)} className="group inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">
-                  {id === 'none' ? 'Не назначен' : u?.name ?? id} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
+                  {id === 'none' ? tf('unassigned') : u?.name ?? id} <X className="h-3 w-3 opacity-50 group-hover:opacity-100" />
                 </button>
               )
             })}
@@ -263,7 +269,7 @@ export function FiltersBar({
         <span className="hidden shrink-0 text-xs text-muted-foreground lg:inline" aria-live="polite">{shownText}</span>
         {active && (
           <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-muted-foreground" onClick={() => onFiltersChange({ ...EMPTY_FILTERS })}>
-            Сбросить всё
+            {tf('resetAll')}
           </Button>
         )}
       </div>

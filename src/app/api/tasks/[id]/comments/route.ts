@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 
@@ -12,11 +12,11 @@ export async function POST(req: Request, { params }: Params) {
     const user = await getCurrentUser()
     const body = await readJson<{ body?: string }>(req)
     const text = (body.body ?? '').trim()
-    if (!text) throw new ApiError('Комментарий не может быть пустым')
-    if (text.length > 20000) throw new ApiError('Комментарий слишком длинный')
+    if (!text) await apiError('commentEmpty')
+    if (text.length > 20000) await apiError('commentTooLong')
 
     const task = await db.task.findUnique({ where: { id }, select: { id: true, projectId: true } })
-    if (!task) throw new ApiError('Задача не найдена', 404)
+    if (!task) await apiError('taskNotFound', undefined, 404)
 
     const comment = await db.comment.create({ data: { taskId: id, authorId: user.id, body: text } })
     await logActivity(id, user.id, 'commented', { commentId: comment.id })
@@ -34,6 +34,6 @@ export async function POST(req: Request, { params }: Params) {
       { status: 201 }
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

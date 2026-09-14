@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson, requireAdmin } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { hashPassword, validatePassword } from '@/lib/auth'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -36,7 +36,7 @@ export async function GET() {
       }))
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -58,15 +58,15 @@ export async function POST(req: Request) {
     const avatarUrlRaw = (body.avatarUrl ?? '').trim()
     const avatarUrl = avatarUrlRaw === '' ? null : avatarUrlRaw
 
-    if (!name) throw new ApiError('Имя обязательно')
-    if (name.length > MAX_NAME) throw new ApiError(`Имя слишком длинное (макс. ${MAX_NAME} символов)`)
-    if (!EMAIL_RE.test(email)) throw new ApiError('Некорректный email')
+    if (!name) throw await apiError('nameRequired')
+    if (name.length > MAX_NAME) throw await apiError('nameTooLong', { max: MAX_NAME })
+    if (!EMAIL_RE.test(email)) throw await apiError('invalidEmail')
 
     const pwError = validatePassword(body.password)
-    if (pwError) throw new ApiError(pwError)
+    if (pwError) throw await apiError(pwError)
 
     const existing = await db.user.findUnique({ where: { email }, select: { id: true } })
-    if (existing) throw new ApiError(`Пользователь с email «${email}» уже существует`)
+    if (existing) throw await apiError('userEmailExists', { email })
 
     const user = await db.user.create({
       data: {
@@ -91,6 +91,6 @@ export async function POST(req: Request) {
       { status: 201 }
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

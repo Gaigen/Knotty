@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { subscribeProject } from '@/lib/server/realtime'
 import type { ProjectRealtimeMessage } from '@/lib/realtime-types'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -15,7 +15,7 @@ export async function GET(req: Request, { params }: Params) {
     const { id: projectId } = await params
     await getCurrentUser()
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const stream = new ReadableStream({
       start(controller) {
@@ -56,6 +56,6 @@ export async function GET(req: Request, { params }: Params) {
       },
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

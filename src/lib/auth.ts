@@ -32,12 +32,14 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash)
 }
 
-export function validatePassword(password: unknown): string | null {
+export type PasswordValidationError = 'passwordMin' | 'passwordMax'
+
+export function validatePassword(password: unknown): PasswordValidationError | null {
   if (typeof password !== 'string' || password.length < 6) {
-    return 'Пароль: минимум 6 символов'
+    return 'passwordMin'
   }
   if (password.length > 72) {
-    return 'Пароль: максимум 72 символа'
+    return 'passwordMax'
   }
   return null
 }

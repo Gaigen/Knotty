@@ -11,7 +11,6 @@ export const GRAPH_EDGE_THEME = {
     strokeWidth: 1.5,
     dashed: false,
     arrowEnd: true,
-    label: 'Блокирует',
   },
   relates: {
     color: '#a1a1aa',
@@ -19,21 +18,18 @@ export const GRAPH_EDGE_THEME = {
     dashed: true,
     dasharray: '6 3',
     arrowEnd: true,
-    label: 'Связана с',
   },
   tree: {
     color: '#d4d4d8',
     strokeWidth: 1.5,
     dashed: false,
     arrowEnd: true,
-    label: 'Иерархия',
   },
   canvas: {
     color: '#0d9488',
     strokeWidth: 1.5,
     dashed: false,
     arrowEnd: false,
-    label: 'Визуальная',
   },
 } as const
 

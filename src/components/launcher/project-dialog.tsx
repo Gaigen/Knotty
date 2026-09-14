@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -27,6 +28,8 @@ export function ProjectDialog({
   project?: ProjectSummaryDto | null
   onCreated?: (id: string) => void
 }) {
+  const t = useTranslations('dialogs')
+  const tc = useTranslations('common')
   const isEdit = !!project
   const create = useCreateProject()
   const update = useUpdateProject()
@@ -38,7 +41,6 @@ export function ProjectDialog({
   const [color, setColor] = useState(PROJECT_COLORS[0])
   const [prevSession, setPrevSession] = useState('')
 
-  // сброс полей при открытии (паттерн «правка состояния при рендере» вместо эффекта)
   const session = `${open ? 'open' : 'closed'}:${project?.id ?? 'new'}`
   if (session !== prevSession) {
     setPrevSession(session)
@@ -51,18 +53,16 @@ export function ProjectDialog({
     }
   }
 
-  // автогенерация ключа транслитом, пока пользователь не трогал поле (ФТ-1.6) — производное значение
   const effectiveKey = keyTouched ? key : isEdit ? key : suggestKeyFromName(name)
-
-  const keyError = effectiveKey && !/^[A-Z]{2,5}$/.test(effectiveKey) ? '2–5 латинских букв' : null
+  const keyError = effectiveKey && !/^[A-Z]{2,5}$/.test(effectiveKey) ? t('keyValidationError') : null
 
   function submit() {
     if (!name.trim()) {
-      toast.error('Введите название проекта')
+      toast.error(t('projectNameRequired'))
       return
     }
     if (!/^[A-Z]{2,5}$/.test(effectiveKey)) {
-      toast.error('Ключ проекта: 2–5 латинских букв')
+      toast.error(t('projectKeyRequired'))
       return
     }
     if (isEdit && project) {
@@ -70,7 +70,7 @@ export function ProjectDialog({
         { id: project.id, name: name.trim(), description, color },
         {
           onSuccess: () => {
-            toast.success('Проект обновлён')
+            toast.success(t('projectUpdated'))
             onOpenChange(false)
           },
           onError: (e) => toast.error(e.message),
@@ -81,7 +81,7 @@ export function ProjectDialog({
         { name: name.trim(), key: effectiveKey, description, color },
         {
           onSuccess: (r) => {
-            toast.success('Проект создан')
+            toast.success(t('projectCreated'))
             onOpenChange(false)
             onCreated?.(r.id)
           },
@@ -95,25 +95,27 @@ export function ProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Редактировать проект' : 'Новый проект'}</DialogTitle>
+          <DialogTitle>{isEdit ? t('projectEditTitle') : t('projectCreateTitle')}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Изменение данных проекта.' : 'Ключ используется в номерах задач, например ' + (effectiveKey || 'VERF') + '-12.'}
+            {isEdit
+              ? t('projectEditDesc')
+              : t('projectCreateDesc', { key: effectiveKey || 'VERF' })}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-1">
           <div className="grid gap-2">
-            <Label htmlFor="project-name">Название *</Label>
+            <Label htmlFor="project-name">{t('projectName')}</Label>
             <Input
               id="project-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Например: Knotty — релиз 1.0"
+              placeholder={t('projectNamePlaceholder')}
               autoFocus
             />
           </div>
           {!isEdit && (
             <div className="grid gap-2">
-              <Label htmlFor="project-key">Ключ *</Label>
+              <Label htmlFor="project-key">{t('projectKey')}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="project-key"
@@ -127,25 +129,25 @@ export function ProjectDialog({
                   aria-describedby="key-hint"
                 />
                 <span id="key-hint" className="text-xs text-muted-foreground">
-                  автогенерация из названия, можно изменить
+                  {t('projectKeyHint')}
                 </span>
               </div>
               {keyError && <p className="text-xs text-destructive">{keyError}</p>}
             </div>
           )}
           <div className="grid gap-2">
-            <Label htmlFor="project-desc">Описание</Label>
+            <Label htmlFor="project-desc">{t('projectDesc')}</Label>
             <Textarea
               id="project-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Коротко, о чём проект"
+              placeholder={t('projectDescPlaceholder')}
               rows={2}
             />
           </div>
           <div className="grid gap-2">
-            <Label>Цвет</Label>
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Цвет проекта">
+            <Label>{t('color')}</Label>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('color')}>
               {PROJECT_COLORS.map((c) => (
                 <button
                   key={c}
@@ -158,16 +160,16 @@ export function ProjectDialog({
                     color === c ? 'border-foreground' : 'border-transparent'
                   )}
                   style={{ backgroundColor: c }}
-                  aria-label={`Цвет ${c}`}
+                  aria-label={t('colorAria', { color: c })}
                 />
               ))}
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tc('cancel')}</Button>
           <Button onClick={submit} disabled={create.isPending || update.isPending || !name.trim() || !!keyError}>
-            {isEdit ? 'Сохранить' : 'Создать проект'}
+            {isEdit ? tc('save') : t('createProject')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,7 +1,8 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
+import { apiError } from '@/lib/server/i18n'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError, assertGraphEdgeAllowed } from '@/lib/server/validation'
+import { assertGraphEdgeAllowed } from '@/lib/server/validation'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -17,10 +18,10 @@ export async function POST(req: Request, { params }: Params) {
 
     const fromNodeId = body.fromNodeId
     const toNodeId = body.toNodeId
-    if (!fromNodeId || !toNodeId) throw new ApiError('Не указаны ноды для связи')
+    if (!fromNodeId || !toNodeId) await apiError('nodesRequiredForLink')
 
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const kind = await assertGraphEdgeAllowed(projectId, fromNodeId, toNodeId, body.kind ?? 'canvas')
 
@@ -28,6 +29,6 @@ export async function POST(req: Request, { params }: Params) {
     publishProjectChange(projectId)
     return Response.json({ id: edge.id }, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

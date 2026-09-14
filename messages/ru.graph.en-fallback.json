@@ -1,0 +1,264 @@
+{
+  "history": {
+    "undoFailed": "Could not undo action",
+    "redoFailed": "Could not redo action",
+    "move": "move",
+    "resize": "resize",
+    "createNode": "create on canvas",
+    "group": "grouping",
+    "deleteFromCanvas": "remove from canvas",
+    "deleteEdge": "delete link",
+    "createEdge": "create link",
+    "groupColor": "frame color",
+    "tasksNotFound": "Tasks for link not found"
+  },
+  "group": {
+    "defaultTitle": "Bundle",
+    "ungroup": "Ungroup",
+    "rename": "Rename",
+    "borderColor": "Frame color",
+    "deleteFrame": "Delete frame (contents remain)",
+    "deleteFrameLabel": "frame (contents remain)",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "hexColorAria": "Frame HEX color"
+  },
+  "groupColors": {
+    "teal": "Teal",
+    "amber": "Amber",
+    "violet": "Violet",
+    "rose": "Rose",
+    "blue": "Blue",
+    "slate": "Slate"
+  },
+  "nodes": {
+    "openTask": "Open task",
+    "deleteTaskNode": "Remove node from canvas",
+    "expandSubtasks": "Expand subtasks",
+    "collapseSubtasks": "Collapse subtasks",
+    "attachmentsCount": "{count} attachments",
+    "dragNote": "Drag note",
+    "preview": "Preview",
+    "deleteNote": "Delete note",
+    "noteTextAria": "Note text",
+    "noteEditHint": "Esc — exit, click outside — save",
+    "noteDoubleClickHint": "Double-click to edit; checkboxes are clickable",
+    "emptyNote": "Empty note — double-click to edit",
+    "openFullscreen": "Open (fullscreen preview)",
+    "deleteFileNode": "Remove file node",
+    "dragFile": "Drag file"
+  },
+  "deleteLabels": {
+    "taskNode": "node (task stays in project)",
+    "note": "note",
+    "group": "frame (contents remain)",
+    "fileNode": "file node",
+    "nodesCount": "{count} nodes"
+  },
+  "edges": {
+    "delete": "Delete link",
+    "blocks": "Blocks",
+    "relates": "Related to",
+    "tree": "Hierarchy",
+    "canvas": "Visual",
+    "blocksShort": "blocks",
+    "relatesShort": "related"
+  },
+  "edgePath": {
+    "bezier": "Curved",
+    "smoothstep": "Steps",
+    "straight": "Straight"
+  },
+  "arrowStyle": {
+    "closed": "Filled",
+    "open": "Outline"
+  },
+  "appearance": {
+    "edgeShape": "Line shape",
+    "arrows": "Arrows",
+    "hint": "View settings are saved locally for this project. Frame color is in the selected bundle panel."
+  },
+  "hints": {
+    "hide": "Hide hints",
+    "show": "Show control hints",
+    "controls": "Controls",
+    "dragSelect": "background selection",
+    "pan": "pan",
+    "addToSelection": "add to selection",
+    "click": "click",
+    "edgeDelete": "delete",
+    "edge": "link",
+    "contextMenu": "menu",
+    "find": "find",
+    "undo": "undo",
+    "nudge": "nudge",
+    "zoom": "zoom"
+  },
+  "offCanvas": {
+    "button": "Off canvas ({count})",
+    "title": "Off canvas: {count}",
+    "addAll": "All",
+    "hidePanel": "Hide panel",
+    "searchPlaceholder": "Search by key or title…",
+    "searchAria": "Search tasks off canvas",
+    "notFound": "Nothing found",
+    "addHint": "Click — center of canvas; drag to desired spot",
+    "footerHint": "Click — center. Drag onto canvas — drop at release point."
+  },
+  "toolbar": {
+    "add": "Add",
+    "newTask": "New task",
+    "existingTask": "Existing task…",
+    "note": "Note",
+    "frame": "Frame",
+    "uploadFile": "Upload file",
+    "layout": "Layout",
+    "autoLayout": "Auto layout",
+    "layoutTree": "Tree (hierarchy)",
+    "layoutColumn": "Column (subtasks down)",
+    "layoutStrip": "Strip (blocks / relates)",
+    "find": "Find",
+    "findTitle": "Find node on canvas (/)",
+    "searchPlaceholder": "Key or task title…",
+    "noTasksOnCanvas": "No tasks on canvas",
+    "appearance": "View",
+    "appearanceTitle": "Line and arrow style",
+    "filters": "Filters",
+    "filtersTitle": "Graph filters",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Shift+Z)",
+    "zoomIn": "Zoom in",
+    "zoom100": "100% zoom",
+    "zoomOut": "Zoom out",
+    "fitView": "Fit to screen",
+    "snapOn": "Alignment grid: on (drag and resize in 10px steps)",
+    "snapOff": "Alignment grid: off",
+    "guidesOn": "Guides: on",
+    "guidesOff": "Guides: off",
+    "readOnlyOn": "View mode: on (drag and links disabled)",
+    "readOnlyOff": "View mode: off",
+    "minimapHide": "Hide minimap",
+    "minimapShow": "Show minimap",
+    "selected": "Selected: {count}",
+    "selectAll": "Select all nodes",
+    "deselect": "Clear selection (Esc)",
+    "deselectShort": "Clear",
+    "wrapInFrame": "Group into frame",
+    "layoutShort": "Layout",
+    "layoutTreeTitle": "Tree layout (hierarchy)",
+    "deleteSelected": "Delete selected nodes (Delete)",
+    "all": "All"
+  },
+  "filters": {
+    "nodeTypes": "Node types",
+    "tasks": "Tasks",
+    "notes": "Notes",
+    "files": "Files",
+    "edges": "Canvas links",
+    "hierarchy": "Hierarchy (parent → child)",
+    "blocks": "Blocks",
+    "relates": "Related to",
+    "canvasEdges": "Visual (note/file)",
+    "statuses": "Statuses",
+    "assignee": "Assignee",
+    "subtreeOnly": "Subtree from selected only"
+  },
+  "toasts": {
+    "allTasksOnCanvas": "All tasks are already on canvas",
+    "addedToCanvas": "Added to canvas: {count}",
+    "deleteEdgeFailed": "Could not delete link",
+    "nodeLinkCreated": "Node link created",
+    "blocksLinkCreated": "«Blocks» link created",
+    "relatesLinkCreated": "«Related to» link created",
+    "tasksOnly": "Only task nodes can be linked",
+    "selectNodesForFrame": "Select nodes for a frame",
+    "frameCreated": "Frame created",
+    "tasksUpdated": "Updated tasks: {count}",
+    "taskUpdated": "Task updated",
+    "createError": "Creation error",
+    "taskCreatedOnCanvas": "Task {key} created on canvas",
+    "uploadError": "Upload error",
+    "fileOnCanvas": "File «{name}» on canvas",
+    "layoutApplied": "Layout applied",
+    "layoutTree": "Tree: hierarchy and subtasks",
+    "layoutColumn": "Column: subtasks under parent",
+    "layoutStrip": "Strip: dependencies left → right",
+    "noteSaved": "Note saved"
+  },
+  "confirm": {
+    "deleteFromCanvas": "Remove {label} from canvas?",
+    "deleteFrame": "Delete frame? Contents will remain on canvas.",
+    "deleteSelectedNodes": "Remove selected nodes ({count}) from canvas?"
+  },
+  "contextMenu": {
+    "openTask": "Open task",
+    "open": "Open",
+    "status": "Status",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "unassigned": "Unassigned",
+    "done": "Done",
+    "selected": "Selected: {count}",
+    "wrapInFrame": "Group into frame",
+    "deleteSelected": "Delete selected ({count})",
+    "deselect": "Clear selection",
+    "newTaskHere": "New task here…",
+    "existingTask": "Existing task…",
+    "note": "Note",
+    "emptyNote": "Empty",
+    "uploadFileHere": "Upload file here…",
+    "frameHere": "Frame here…",
+    "selectAll": "Select all",
+    "tree": "Tree",
+    "column": "Column",
+    "dependencyStrip": "Dependency strip"
+  },
+  "noteTemplates": {
+    "idea": {
+      "label": "Idea",
+      "text": "## 💡 Idea\n\n- Summary:\n- Why:\n- What's needed:"
+    },
+    "checklist": {
+      "label": "Checklist",
+      "text": "## ☑️ Checklist\n\n- [ ] Item 1\n- [ ] Item 2\n- [ ] Item 3"
+    },
+    "question": {
+      "label": "Question",
+      "text": "## ❓ Question\n\n**Context:**\n\n**Question:**\n\n**Answer:**"
+    },
+    "risk": {
+      "label": "Risk",
+      "text": "## ⚠️ Risk\n\n**What could go wrong:**\n\n**Likelihood:**\n\n**Mitigation:**"
+    }
+  },
+  "connectDialog": {
+    "title": "Link type",
+    "blocks": "Blocks",
+    "blocksHint": "arrow in direction",
+    "relates": "Related to",
+    "relatesHint": "no direction",
+    "canvas": "Simple link",
+    "canvasHint": "visual only"
+  },
+  "dialogs": {
+    "newTaskTitle": "New task on canvas",
+    "taskTypeAria": "Task type",
+    "taskTitlePlaceholder": "Task title",
+    "createNode": "Create node",
+    "pickTaskTitle": "Add existing task",
+    "pickTaskSearch": "Search by key or title…",
+    "allTasksOnCanvas": "All project tasks are already on canvas",
+    "noteTitle": "Note",
+    "close": "Close"
+  },
+  "empty": {
+    "title": "Canvas is empty",
+    "description": "Add tasks to the graph — blocks/relates links and hierarchy appear automatically when both tasks are on canvas.",
+    "addAllTasks": "Add all tasks ({count})"
+  },
+  "mobile": {
+    "title": "Graph available on desktop",
+    "description": "The infinite canvas with zoom and drag is designed for a large screen."
+  },
+  "loading": "Loading graph…"
+}

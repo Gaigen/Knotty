@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -28,7 +29,8 @@ import { DueDateField } from '@/components/tasks/due-date-field'
 import {
   copyToClipboard, useCreateTask, useDeleteTask, useTask, useTasks, useUpdateTask, useUploadAttachments,
 } from '@/lib/api'
-import { ALLOWED_CHILDREN, PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
+import { childTypesForParent, parentTypesForChild, PRIORITIES, TASK_TYPES } from '@/lib/config'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
 import { isOverdue } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { StatusDto, TaskFullDto, UserDto } from '@/lib/types'
@@ -61,6 +63,9 @@ export function TaskPanelCompact({
   onSwitchMode: () => void
 }) {
   void projectKey
+  const t = useTranslations('taskPanel')
+  const tc = useTranslations('common')
+  const { typeLabel, priorityLabel } = useEnumLabels()
   const { data: task, isLoading, error } = useTask(taskId)
   const update = useUpdateTask()
   const del = useDeleteTask()
@@ -127,7 +132,7 @@ export function TaskPanelCompact({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: task.type,
-          title: `${task.title} (копия)`,
+          title: `${task.title} ${t('copySuffix')}`,
           description: task.description,
           statusId: task.statusId,
           assigneeId: task.assigneeId,
@@ -137,12 +142,12 @@ export function TaskPanelCompact({
           parentId: task.parentId,
         }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Не удалось дублировать')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t('duplicateFailed'))
       const created = await res.json()
       qc.invalidateQueries({ queryKey: ['tasks', task.projectId] })
       qc.invalidateQueries({ queryKey: ['projects'] })
       qc.invalidateQueries({ queryKey: ['project', task.projectId] })
-      toast.success(`Создана копия ${created.key}`)
+      toast.success(t('duplicateSuccess', { key: created.key }))
       onOpenTask(created.id)
     } catch (e) {
       toast.error((e as Error).message)
@@ -151,32 +156,32 @@ export function TaskPanelCompact({
 
   async function copyKey() {
     if (!task) return
-    if (await copyToClipboard(task.key)) toast.success('Ключ скопирован')
-    else toast.error('Не удалось скопировать')
+    if (await copyToClipboard(task.key)) toast.success(t('keyCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
   async function copyLink() {
     if (!task) return
     const url = `${window.location.origin}/?project=${task.projectId}&tab=tasks&task=${taskId}`
-    if (await copyToClipboard(url)) toast.success('Ссылка скопирована')
-    else toast.error('Не удалось скопировать')
+    if (await copyToClipboard(url)) toast.success(t('linkCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
   function deleteTask() {
     if (!task) return
-    if (!confirm(`Удалить задачу ${task.key}?\n\nПодзадачи открепятся, связи, вложения и комментарии удалятся.`)) return
+    if (!confirm(t('deleteConfirm', { key: task.key }))) return
     del.mutate(
       { id: task.id, projectId: task.projectId },
-      { onSuccess: () => { toast.success('Задача удалена'); onDeleted() }, onError: (e) => toast.error(e.message) }
+      { onSuccess: () => { toast.success(t('taskDeleted')); onDeleted() }, onError: (e) => toast.error(e.message) }
     )
   }
 
   if (error) {
     return (
-      <aside className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-background shadow-2xl sm:w-[480px]" aria-label="Панель задачи">
+      <aside className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-background shadow-2xl sm:w-[480px]" aria-label={t('panelAria', { key: '' })}>
         <div className="flex items-center justify-between border-b p-4">
-          <span className="text-sm text-muted-foreground">Задача не найдена</span>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><X className="h-4 w-4" /></Button>
+          <span className="text-sm text-muted-foreground">{t('notFound')}</span>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('close')}><X className="h-4 w-4" /></Button>
         </div>
       </aside>
     )
@@ -185,7 +190,7 @@ export function TaskPanelCompact({
   return (
     <aside
       className="fixed inset-y-0 right-0 z-40 flex w-full flex-col border-l bg-background shadow-2xl sm:w-[480px]"
-      aria-label={`Панель задачи ${task?.key ?? ''}`}
+      aria-label={t('panelAria', { key: task?.key ?? '' })}
       data-editor-root
     >
       {/* Шапка: тип, ключ, быстрые действия */}
@@ -202,7 +207,7 @@ export function TaskPanelCompact({
                 disabled={update.isPending}
                 onClick={() => patch({ statusId: doneStatus.id })}
               >
-                <Check className="h-3.5 w-3.5" /> {isDone ? 'Готово ✓' : 'Готово'}
+                <Check className="h-3.5 w-3.5" /> {isDone ? t('doneCheck') : t('done')}
               </Button>
             )}
 
@@ -211,39 +216,39 @@ export function TaskPanelCompact({
               size="icon"
               className="h-7 w-7"
               onClick={onSwitchMode}
-              aria-label="Полноэкранный режим"
-              title="Полноэкранный режим (двухколоночный редактор)"
+              aria-label={t('fullscreen')}
+              title={t('fullscreenHint')}
             >
               <Maximize2 className="h-4 w-4" />
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Действия над задачей">
+                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('taskActions')}>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={duplicate}>
-                  <CopyPlus className="h-4 w-4" /> Дублировать
+                  <CopyPlus className="h-4 w-4" /> {t('duplicate')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={copyKey}>
-                  <Copy className="h-4 w-4" /> Копировать ключ
+                  <Copy className="h-4 w-4" /> {t('copyKey')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={copyLink}>
-                  <ExternalLink className="h-4 w-4" /> Копировать ссылку
+                  <ExternalLink className="h-4 w-4" /> {t('copyLink')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={deleteTask}
                 >
-                  <Trash2 className="h-4 w-4" /> Удалить…
+                  <Trash2 className="h-4 w-4" /> {t('delete')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label="Закрыть панель">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose} aria-label={t('closePanel')}>
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -262,13 +267,13 @@ export function TaskPanelCompact({
             }}
             rows={2}
             className="mt-1 w-full resize-none rounded-md border bg-background px-2 py-1.5 text-base font-semibold outline-none ring-ring focus:ring-1"
-            aria-label="Редактирование названия"
+            aria-label={t('editTitle')}
           />
         ) : (
           <h2
             className="mt-1 cursor-text rounded-md px-2 py-1.5 text-base font-semibold leading-snug hover:bg-muted/60"
             onClick={() => task && setEditingTitle(true)}
-            title="Кликните, чтобы переименовать"
+            title={t('renameHint')}
           >
             {task?.title ?? <span className="inline-block h-5 w-3/4 animate-pulse rounded bg-muted" />}
           </h2>
@@ -281,7 +286,7 @@ export function TaskPanelCompact({
               <SelectTrigger
                 className="h-7 w-auto gap-1.5 border-none px-2 text-xs font-medium shadow-none"
                 style={{ backgroundColor: `${currentStatus?.color}1f`, color: currentStatus?.color }}
-                aria-label="Сменить статус"
+                aria-label={t('changeStatus')}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: currentStatus?.color }} />
                 <SelectValue />
@@ -299,7 +304,7 @@ export function TaskPanelCompact({
             </Select>
 
             <Select value={task.assigneeId ?? 'none'} onValueChange={(v) => patch({ assigneeId: v === 'none' ? null : v })}>
-              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label="Сменить исполнителя">
+              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label={t('changeAssignee')}>
                 <UserAvatar user={assignee} size={16} />
                 <SelectValue />
               </SelectTrigger>
@@ -310,34 +315,34 @@ export function TaskPanelCompact({
                   </SelectItem>
                 ))}
                 <SelectItem value="none" className="text-sm">
-                  <span className="flex items-center gap-2"><UserAvatar user={null} size={18} /> Не назначен</span>
+                  <span className="flex items-center gap-2"><UserAvatar user={null} size={18} /> {t('unassigned')}</span>
                 </SelectItem>
               </SelectContent>
             </Select>
 
             <Select value={task.priority} onValueChange={(v) => patch({ priority: v })}>
-              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label="Сменить приоритет">
+              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label={t('changePriority')}>
                 <PriorityIcon priority={task.priority} />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {PRIORITIES.map((p) => (
                   <SelectItem key={p} value={p} className="text-sm">
-                    <span className="flex items-center gap-2"><PriorityIcon priority={p} /> {PRIORITY_LABELS_RU[p]}</span>
+                    <span className="flex items-center gap-2"><PriorityIcon priority={p} /> {priorityLabel(p)}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
             <Select value={task.type} onValueChange={(v) => patch({ type: v })}>
-              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label="Сменить тип">
+              <SelectTrigger className="h-7 w-auto gap-1.5 border-none bg-muted px-2 text-xs shadow-none" aria-label={t('changeType')}>
                 <TypeIcon type={task.type} className="h-3.5 w-3.5" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TASK_TYPES.map((t) => (
-                  <SelectItem key={t} value={t} className="text-sm">
-                    <span className="flex items-center gap-2"><TypeIcon type={t} className="h-3.5 w-3.5" /> {TYPE_LABELS_RU[t]}</span>
+                {TASK_TYPES.map((taskType) => (
+                  <SelectItem key={taskType} value={taskType} className="text-sm">
+                    <span className="flex items-center gap-2"><TypeIcon type={taskType} className="h-3.5 w-3.5" /> {typeLabel(taskType)}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -392,7 +397,7 @@ export function TaskPanelCompact({
       {/* индикатор сохранения */}
       {update.isPending && (
         <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2">
-          <Badge variant="secondary" className="animate-pulse">Сохранение…</Badge>
+          <Badge variant="secondary" className="animate-pulse">{t('saving')}</Badge>
         </div>
       )}
     </aside>
@@ -413,6 +418,9 @@ function PanelDetailsCompact({
   onPatch: (body: Record<string, unknown>) => Promise<unknown>
   onOpenTask: (id: string) => void
 }) {
+  const t = useTranslations('taskPanel')
+  const tc = useTranslations('common')
+  const { typeLabel } = useEnumLabels()
   void users
   const qc = useQueryClient()
   const upload = useUploadAttachments()
@@ -441,13 +449,12 @@ function PanelDetailsCompact({
   const currentStatus = statusById.get(task.statusId)
   const doneStatus = [...statuses].filter((s) => s.category === 3).sort((a, b) => b.order - a.order)[0]
 
-  const allowedParentTypes = (Object.keys(ALLOWED_CHILDREN) as string[]).filter((pt) =>
-    ALLOWED_CHILDREN[pt].includes(task.type)
-  )
+  const allowedParentTypes = useMemo(() => parentTypesForChild(task.type), [task.type])
   const parentCandidates = allTasks.filter((t) => t.id !== task.id && allowedParentTypes.includes(t.type))
 
   const doneChildren = task.children.filter((c) => (statusById.get(c.statusId)?.category ?? 0) === 3).length
-  const defaultChildType = ALLOWED_CHILDREN[task.type]?.[0] ?? 'task'
+  const childTypes = childTypesForParent(task.type)
+  const [childType, setChildType] = useState<string>(childTypes[0] ?? 'task')
 
   function addLabel() {
     const l = labelInput.trim()
@@ -486,7 +493,7 @@ function PanelDetailsCompact({
     createTask.mutate(
       {
         projectId: task.projectId,
-        type: defaultChildType,
+        type: childType,
         title,
         parentId: task.id,
         assigneeId: task.assigneeId,
@@ -522,7 +529,7 @@ function PanelDetailsCompact({
   return (
     <div className="space-y-5 p-4">
       {/* Описание */}
-      <section aria-label="Описание">
+      <section aria-label={t('description')}>
         {editingDesc ? (
           <div className="space-y-2">
             <MarkdownEditor
@@ -540,19 +547,19 @@ function PanelDetailsCompact({
                 }}
                 disabled={upload.isPending}
               >
-                Сохранить
+                {tc('save')}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => { setDescDraft(task.description); setEditingDesc(false) }}>
-                Отмена
+                {tc('cancel')}
               </Button>
             </div>
           </div>
         ) : (
           <div>
             <div className="group flex items-center justify-between">
-              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Описание</h3>
+              <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('description')}</h3>
               <Button variant="ghost" size="sm" className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => setEditingDesc(true)}>
-                Изменить
+                {t('edit')}
               </Button>
             </div>
             <MarkdownView
@@ -567,8 +574,8 @@ function PanelDetailsCompact({
       </section>
 
       {/* Срок + Родитель */}
-      <section aria-label="Поля задачи" className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-y-3 text-sm">
-        <span className="text-muted-foreground">Срок</span>
+      <section aria-label={t('fieldsAria')} className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-y-3 text-sm">
+        <span className="text-muted-foreground">{t('dueDate')}</span>
         <DueDateField
           dueDate={task.dueDate}
           onDueDateChange={(iso) => onPatch({ dueDate: iso }).catch(() => {})}
@@ -576,13 +583,13 @@ function PanelDetailsCompact({
           overdue={isOverdue(task.dueDate, currentStatus?.category ?? 0)}
         />
 
-        <span className="text-muted-foreground">Родитель</span>
+        <span className="text-muted-foreground">{t('parent')}</span>
         <ParentTaskPicker task={task} parentCandidates={parentCandidates} onPatch={onPatch} />
       </section>
 
       {/* Метки */}
-      <section aria-label="Метки">
-        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Метки</h3>
+      <section aria-label={t('labels')}>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('labels')}</h3>
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-1.5">
           {task.labels.map((l) => (
             <LabelChip key={l} label={l} onRemove={() => onPatch({ labels: task.labels.filter((x) => x !== l) }).catch(() => {})} />
@@ -593,18 +600,18 @@ function PanelDetailsCompact({
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addLabel() }
             }}
-            placeholder={task.labels.length === 0 ? 'Enter — добавить' : ''}
+            placeholder={task.labels.length === 0 ? t('labelAddPlaceholder') : ''}
             className="min-w-[110px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground/60"
-            aria-label="Новая метка"
+            aria-label={t('newLabel')}
           />
         </div>
       </section>
 
       {/* Подзадачи */}
-      <section aria-label="Подзадачи">
+      <section aria-label={t('subtasks')}>
         <div className="mb-1.5 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <ListTree className="h-3.5 w-3.5" /> Подзадачи
+            <ListTree className="h-3.5 w-3.5" /> {t('subtasks')}
           </h3>
           {task.children.length > 0 && (
             <span className="text-xs text-muted-foreground">
@@ -628,7 +635,7 @@ function PanelDetailsCompact({
                     'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                     cDone ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/40 hover:border-foreground'
                   )}
-                  aria-label={cDone ? `Вернуть ${c.key} в работу` : `Отметить ${c.key} выполненной`}
+                  aria-label={cDone ? t('markUndone', { key: c.key }) : t('markDone', { key: c.key })}
                 >
                   {cDone && <Check className="h-3 w-3" />}
                 </button>
@@ -641,23 +648,38 @@ function PanelDetailsCompact({
             )
           })}
         </ul>
-        {ALLOWED_CHILDREN[task.type]?.length ? (
+        {childTypes.length ? (
           <div className="mt-1.5 flex items-center gap-1.5">
-            <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+            <Select value={childType} onValueChange={setChildType}>
+              <SelectTrigger className="h-8 w-[108px] shrink-0 gap-1 px-2" aria-label={t('subtaskType')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {childTypes.map((ct) => (
+                  <SelectItem key={ct} value={ct}>
+                    <span className="flex items-center gap-1.5">
+                      <TypeIcon type={ct} className="h-3.5 w-3.5" />
+                      {typeLabel(ct)}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <input
               value={subtaskTitle}
               onChange={(e) => setSubtaskTitle(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') { e.preventDefault(); addSubtask() }
               }}
-              placeholder={`Добавить (${TYPE_LABELS_RU[defaultChildType].toLowerCase()}) — Enter`}
-              className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
-              aria-label="Новая подзадача"
+              placeholder={t('addSubtask', { type: typeLabel(childType).toLowerCase() })}
+              className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
+              aria-label={t('newSubtask')}
             />
             {createTask.isPending && <span className="text-xs text-muted-foreground">…</span>}
           </div>
         ) : (
-          <p className="mt-1 text-xs text-muted-foreground">Тип «{TYPE_LABELS_RU[task.type]}» не может иметь подзадач</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('noSubtasksForType', { type: typeLabel(task.type) })}</p>
         )}
       </section>
     </div>

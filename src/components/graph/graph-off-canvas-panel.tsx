@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ListPlus, Search, X } from 'lucide-react'
 import { Panel } from '@xyflow/react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TypeIcon } from '@/components/shared/bits'
@@ -27,6 +28,7 @@ export function GraphOffCanvasPanel({
   onAddAll: () => void
   onAddTask: (taskId: string) => void
 }) {
+  const t = useTranslations('graph.offCanvas')
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
@@ -47,7 +49,7 @@ export function GraphOffCanvasPanel({
           onClick={() => onOpenChange(true)}
         >
           <ListPlus className="h-4 w-4" />
-          Не на канвасе ({tasks.length})
+          {t('button', { count: tasks.length })}
         </Button>
       </Panel>
     )
@@ -57,7 +59,7 @@ export function GraphOffCanvasPanel({
     <Panel position="bottom-right" className="!mb-3 !mr-3 z-[10]">
       <div className="w-80 rounded-xl border bg-background/95 shadow-lg backdrop-blur">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-          <span className="text-xs font-medium text-muted-foreground">Не на канвасе: {tasks.length}</span>
+          <span className="text-xs font-medium text-muted-foreground">{t('title', { count: tasks.length })}</span>
           <div className="flex items-center gap-1">
             <Button
               size="sm"
@@ -66,14 +68,14 @@ export function GraphOffCanvasPanel({
               disabled={bulkAdding || readOnly}
               onClick={onAddAll}
             >
-              <ListPlus className="h-3.5 w-3.5" /> Все
+              <ListPlus className="h-3.5 w-3.5" /> {t('addAll')}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               className="h-7 w-7 p-0"
               onClick={() => onOpenChange(false)}
-              aria-label="Скрыть панель"
+              aria-label={t('hidePanel')}
             >
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -85,41 +87,41 @@ export function GraphOffCanvasPanel({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по ключу или названию…"
+              placeholder={t('searchPlaceholder')}
               className="h-8 pl-8 text-sm"
-              aria-label="Поиск задач не на канвасе"
+              aria-label={t('searchAria')}
             />
           </div>
         </div>
         <div className="custom-scroll max-h-64 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <p className="px-2 py-3 text-center text-xs text-muted-foreground">Ничего не найдено</p>
+            <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t('notFound')}</p>
           ) : (
-            filtered.map((t) => (
+            filtered.map((task) => (
               <button
-                key={t.id}
+                key={task.id}
                 type="button"
                 draggable={!readOnly}
                 onDragStart={(e) => {
                   if (readOnly) return
-                  e.dataTransfer.setData(TASK_DRAG_TYPE, t.id)
+                  e.dataTransfer.setData(TASK_DRAG_TYPE, task.id)
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
                 disabled={readOnly}
-                onClick={() => onAddTask(t.id)}
-                title={readOnly ? undefined : 'Клик — в центр канваса; перетащите на нужное место'}
+                onClick={() => onAddTask(task.id)}
+                title={readOnly ? undefined : t('addHint')}
               >
-                <TypeIcon type={t.type} className="h-3.5 w-3.5 shrink-0" />
-                <span className="font-mono text-[10px] text-muted-foreground">{t.key}</span>
-                <span className="truncate">{t.title}</span>
+                <TypeIcon type={task.type} className="h-3.5 w-3.5 shrink-0" />
+                <span className="font-mono text-[10px] text-muted-foreground">{task.key}</span>
+                <span className="truncate">{task.title}</span>
               </button>
             ))
           )}
         </div>
         {!readOnly && (
           <p className="border-t px-3 py-1.5 text-[10px] text-muted-foreground">
-            Клик — в центр. Перетащите на канвас — в точку отпускания.
+            {t('footerHint')}
           </p>
         )}
       </div>

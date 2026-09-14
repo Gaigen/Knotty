@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { createPortal } from 'react-dom'
 import { Download, FileQuestion, X } from 'lucide-react'
 import { MarkdownView } from '@/components/shared/markdown'
@@ -12,7 +13,7 @@ import {
   resolveAttachmentPreviewKind,
   type AttachmentPreviewKind,
 } from '@/lib/attachment-preview'
-import { formatSize } from '@/lib/format'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 
 export type AttachmentPreviewItem = {
@@ -24,6 +25,9 @@ export type AttachmentPreviewItem = {
 }
 
 function TextPreview({ url, fileName, asMarkdown }: { url: string; fileName: string; asMarkdown?: boolean }) {
+  const t = useTranslations('shared')
+  const tc = useTranslations('common')
+  const { formatSize } = useFormatters()
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading')
   const [content, setContent] = useState('')
   const [truncated, setTruncated] = useState(false)
@@ -54,10 +58,10 @@ function TextPreview({ url, fileName, asMarkdown }: { url: string; fileName: str
   }, [url])
 
   if (state === 'loading') {
-    return <p className="text-sm text-muted-foreground">Загрузка…</p>
+    return <p className="text-sm text-muted-foreground">{tc('loading')}</p>
   }
   if (state === 'error') {
-    return <p className="text-sm text-destructive">Не удалось загрузить файл для предпросмотра</p>
+    return <p className="text-sm text-destructive">{t('attachmentLoadError')}</p>
   }
 
   if (asMarkdown) {
@@ -65,7 +69,7 @@ function TextPreview({ url, fileName, asMarkdown }: { url: string; fileName: str
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         {truncated && (
           <p className="text-xs text-amber-200/90">
-            Показаны первые {formatSize(MAX_TEXT_PREVIEW_BYTES)} — файл обрезан
+            {t('attachmentTruncated', { size: formatSize(MAX_TEXT_PREVIEW_BYTES) })}
           </p>
         )}
         <div className="custom-scroll min-h-0 flex-1 overflow-auto rounded-lg bg-background p-4 shadow-2xl">
@@ -79,12 +83,12 @@ function TextPreview({ url, fileName, asMarkdown }: { url: string; fileName: str
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {truncated && (
         <p className="text-xs text-amber-200/90">
-          Показаны первые {formatSize(MAX_TEXT_PREVIEW_BYTES)} — файл обрезан
+          {t('attachmentTruncated', { size: formatSize(MAX_TEXT_PREVIEW_BYTES) })}
         </p>
       )}
       <pre
         className="custom-scroll min-h-0 flex-1 overflow-auto rounded-lg bg-zinc-950 p-4 text-[13px] leading-relaxed text-zinc-100"
-        aria-label={`Текст ${fileName}`}
+        aria-label={t('textAria', { fileName })}
       >
         {content}
       </pre>
@@ -101,6 +105,7 @@ function PreviewBody({
   kind: AttachmentPreviewKind
   url: string
 }) {
+  const t = useTranslations('shared')
   switch (kind) {
     case 'image':
       return (
@@ -124,7 +129,7 @@ function PreviewBody({
           preload="metadata"
           onClick={(e) => e.stopPropagation()}
         >
-          Видео не поддерживается браузером
+          {t('videoUnsupported')}
         </video>
       )
     case 'audio':
@@ -133,7 +138,7 @@ function PreviewBody({
           <div className="flex flex-col items-center gap-6">
             <FileMimeIcon mime={item.mime} className="h-16 w-16 shrink-0 text-white/80" />
             <audio src={url} controls className="block w-full" preload="metadata">
-              Аудио не поддерживается браузером
+              {t('audioUnsupported')}
             </audio>
           </div>
         </div>
@@ -146,8 +151,8 @@ function PreviewBody({
       return (
         <div className="flex flex-col items-center gap-4 rounded-xl bg-white/10 px-8 py-10 text-center text-white">
           <FileQuestion className="h-14 w-14 text-white/60" />
-          <p className="text-sm text-white/90">Предпросмотр для этого типа файла недоступен</p>
-          <p className="text-xs text-white/60">{item.mime || 'неизвестный тип'}</p>
+          <p className="text-sm text-white/90">{t('previewUnavailable')}</p>
+          <p className="text-xs text-white/60">{item.mime || t('unknownMime')}</p>
         </div>
       )
   }
@@ -161,6 +166,9 @@ export function AttachmentViewer({
   item: AttachmentPreviewItem | null
   onClose: () => void
 }) {
+  const t = useTranslations('shared')
+  const tc = useTranslations('common')
+  const { formatSize } = useFormatters()
   useEffect(() => {
     if (!item) return
     const onKey = (e: KeyboardEvent) => {
@@ -185,7 +193,7 @@ export function AttachmentViewer({
       className="fixed inset-0 z-[200] flex flex-col bg-black/90"
       role="dialog"
       aria-modal="true"
-      aria-label={`Просмотр ${item.fileName}`}
+      aria-label={t('viewerAria', { fileName: item.fileName })}
     >
       <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-white/10 bg-zinc-950 px-4 py-3 text-white">
         <FileMimeIcon mime={item.mime} className="h-5 w-5 shrink-0 text-white/70" />
@@ -201,13 +209,13 @@ export function AttachmentViewer({
           className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs text-white transition-colors hover:bg-white/20"
         >
           <Download className="h-4 w-4" />
-          Скачать
+          {t('download')}
         </a>
         <button
           type="button"
           onClick={onClose}
           className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20"
-          aria-label="Закрыть просмотр"
+          aria-label={t('closeViewer')}
         >
           <X className="h-4 w-4" />
         </button>

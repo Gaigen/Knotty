@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { sessionCookie, signSessionToken, verifyPassword } from '@/lib/auth'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -18,13 +18,13 @@ export async function POST(req: Request) {
     const email = (body.email ?? '').trim().toLowerCase()
     const password = body.password ?? ''
 
-    if (!EMAIL_RE.test(email)) throw new ApiError('Некорректный email')
-    if (!password) throw new ApiError('Введите пароль')
+    if (!EMAIL_RE.test(email)) throw await apiError('invalidEmail')
+    if (!password) throw await apiError('passwordRequired')
 
     const user = await db.user.findUnique({ where: { email } })
     // единая ошибка для неверного email и неверного пароля — не раскрываем, что существует
     if (!user?.passwordHash || !(await verifyPassword(password, user.passwordHash))) {
-      throw new ApiError('Неверный email или пароль', 401)
+      throw await apiError('invalidCredentials', undefined, 401)
     }
 
     const token = await signSessionToken(user.id, user.sessionEpoch)
@@ -40,6 +40,6 @@ export async function POST(req: Request) {
     res.headers.append('Set-Cookie', sessionCookie(token, isSecure(req)))
     return res
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

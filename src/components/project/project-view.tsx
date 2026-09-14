@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useRouter } from '@/i18n/navigation'
 import { toast } from 'sonner'
 import {
   ArrowLeft, Boxes, Download, KanbanSquare, ListTodo, MoreHorizontal, Pencil, Plus, Share2, Star, Trash2, Network, Workflow,
@@ -42,6 +43,8 @@ export function ProjectView({
   taskId: string | null
 }) {
   const router = useRouter()
+  const tp = useTranslations('project')
+  const tc = useTranslations('common')
   const { data: project, isLoading, error } = useProject(projectId)
   const { data: users = [] } = useUsers()
   const { data: meData } = useMe()
@@ -158,9 +161,9 @@ export function ProjectView({
         <div className="w-full max-w-md">
           <EmptyState
             icon={<Boxes className="h-10 w-10" />}
-            title="Проект не найден"
-            description="Возможно, он был удалён или ссылка устарела."
-            action={<Button onClick={() => router.push('/')}>К списку проектов</Button>}
+            title={tp('notFound')}
+            description={tp('notFoundDescription')}
+            action={<Button onClick={() => router.push('/')}>{tp('back')}</Button>}
           />
         </div>
       </div>
@@ -176,7 +179,7 @@ export function ProjectView({
       <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="px-4 sm:px-6">
           <div className="flex items-center gap-3 py-2.5">
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => router.push('/')} aria-label="К списку проектов">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => router.push('/')} aria-label={tp('backAria')}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <span className="h-7 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: project.color }} aria-hidden />
@@ -192,9 +195,9 @@ export function ProjectView({
                     'shrink-0 rounded-md p-1 transition-colors hover:bg-muted disabled:opacity-50',
                     project.isFavorite ? 'text-amber-400' : 'text-muted-foreground hover:text-amber-400'
                   )}
-                  aria-label={project.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+                  aria-label={project.isFavorite ? tp('removeFavorite') : tp('addFavorite')}
                   aria-pressed={project.isFavorite}
-                  title={project.isFavorite ? 'Убрать из избранного' : 'В избранное'}
+                  title={project.isFavorite ? tp('favoriteTitleRemove') : tp('favoriteTitleAdd')}
                 >
                   <Star className={cn('h-3.5 w-3.5', project.isFavorite && 'fill-amber-400')} />
                 </button>
@@ -207,42 +210,42 @@ export function ProjectView({
 
             <Button size="sm" className="shrink-0 gap-1.5" onClick={() => setCreateOpen(true)}>
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Задача</span>
+              <span className="hidden sm:inline">{tp('newTask')}</span>
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="Меню проекта">
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={tp('projectMenu')}>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => setEditProjectOpen(true)}>
-                  <Pencil className="h-4 w-4" /> Редактировать
+                  <Pencil className="h-4 w-4" /> {tp('editProject')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setWorkflowOpen(true)}>
-                  <Workflow className="h-4 w-4" /> Настроить workflow…
+                  <Workflow className="h-4 w-4" /> {tp('configureWorkflow')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={async () => {
                     const url = `${window.location.origin}/?project=${project.id}`
-                    if (await copyToClipboard(url)) toast.success('Ссылка на проект скопирована')
-                    else toast.error('Не удалось скопировать')
+                    if (await copyToClipboard(url)) toast.success(tp('linkCopied'))
+                    else toast.error(tc('copyFailed'))
                   }}
                 >
-                  <Share2 className="h-4 w-4" /> Копировать ссылку
+                  <Share2 className="h-4 w-4" /> {tp('copyLink')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.open(`/api/projects/${project.id}/export`, '_blank')}>
-                  <Download className="h-4 w-4" /> Экспорт JSON
+                  <Download className="h-4 w-4" /> {tp('exportJson')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => window.open(`/api/projects/${project.id}/export/bundle`, '_blank')}>
-                  <Download className="h-4 w-4" /> Экспорт ZIP (с файлами)
+                  <Download className="h-4 w-4" /> {tp('exportZip')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={() => setDeleteProjectOpen(true)}
                 >
-                  <Trash2 className="h-4 w-4" /> Удалить проект…
+                  <Trash2 className="h-4 w-4" /> {tp('deleteProject')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -254,13 +257,13 @@ export function ProjectView({
             <div
               className="inline-flex items-center gap-1 rounded-lg bg-muted p-1"
               role="tablist"
-              aria-label="Разделы проекта"
+              aria-label={tp('tabsAria')}
             >
             {(
               [
-                ['tasks', 'Задачи', <ListTodo key="i" className="h-4 w-4" />, `${project.counts.total}`],
-                ['board', 'Доска', <KanbanSquare key="i" className="h-4 w-4" />, `${project.counts.inProgress}`],
-                ['graph', 'Граф', <Network key="i" className="h-4 w-4" />, null],
+                ['tasks', tp('tabTasks'), <ListTodo key="i" className="h-4 w-4" />, `${project.counts.total}`],
+                ['board', tp('tabBoard'), <KanbanSquare key="i" className="h-4 w-4" />, `${project.counts.inProgress}`],
+                ['graph', tp('tabGraph'), <Network key="i" className="h-4 w-4" />, null],
               ] as [ProjectTab, string, React.ReactNode, string | null][]
             ).map(([value, label, icon, count], idx) => (
               <button

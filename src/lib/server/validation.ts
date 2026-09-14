@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { ALLOWED_CHILDREN, TYPE_LABELS_RU } from '@/lib/config'
+import { ALLOWED_CHILDREN } from '@/lib/config'
 import type { LinkType, TaskType } from '@/lib/types'
 import {
   blocksAdjacency,
@@ -10,6 +10,7 @@ import {
   taskEndpoint,
   type BlocksGraphInput,
 } from '@/lib/graph-blocks'
+import { apiError, getApiTranslations, taskTypeLabel } from './i18n'
 
 export class ApiError extends Error {
   status: number
@@ -87,39 +88,43 @@ export async function assertParentAllowed(childTaskId: string, parentId: string)
     where: { id: childTaskId },
     select: { id: true, type: true, projectId: true },
   })
-  if (!child) throw new ApiError('Задача не найдена', 404)
+  if (!child) throw await apiError('taskNotFound', undefined, 404)
   const parent = await db.task.findUnique({
     where: { id: parentId },
     select: { id: true, type: true, projectId: true, title: true, number: true, project: { select: { key: true } } },
   })
-  if (!parent) throw new ApiError('Родительская задача не найдена', 404)
-  if (parent.projectId !== child.projectId) throw new ApiError('Родительская задача должна быть из того же проекта')
-  if (parent.id === child.id) throw new ApiError('Задача не может быть родителем самой себя')
+  if (!parent) throw await apiError('parentTaskNotFound', undefined, 404)
+  if (parent.projectId !== child.projectId) throw await apiError('parentMustBeSameProject')
+  if (parent.id === child.id) throw await apiError('taskCannotBeOwnParent')
 
   // допустимость пары типов (п. 4.1.1)
   if (!ALLOWED_CHILDREN[parent.type]?.includes(child.type)) {
-    const allowed = (ALLOWED_CHILDREN[parent.type] ?? []).map((t) => TYPE_LABELS_RU[t]).join(', ')
-    throw new ApiError(
-      `${TYPE_LABELS_RU[parent.type]} не может быть родителем для «${TYPE_LABELS_RU[child.type]}»` +
-        (allowed ? ` (допустимые потомки: ${allowed})` : ' (этот тип не может быть родителем)')
-    )
+    const t = await getApiTranslations()
+    const parentType = await taskTypeLabel(parent.type)
+    const childType = await taskTypeLabel(child.type)
+    const allowedTypes = ALLOWED_CHILDREN[parent.type] ?? []
+    if (allowedTypes.length) {
+      const allowed = (await Promise.all(allowedTypes.map((type) => taskTypeLabel(type)))).join(', ')
+      throw await apiError('parentTypeMismatchWithAllowed', { parentType, childType, allowed })
+    } else {
+      throw await apiError('parentTypeCannotHaveChildren', { parentType, childType })
+    }
   }
 
   // защита от циклов в дереве: цепочка предков не должна содержать саму задачу
   const chain = await ancestorChain(parent.id)
   if (chain.some((a) => a.id === child.id)) {
-    throw new ApiError('Нельзя сделать задачу потомком её собственной подзадачи')
+    throw await apiError('cannotMakeChildOfSubtask')
   }
 }
 
 /** Проверка смены типа задачи, у которой уже есть потомки (п. 4.1.1) */
-export function assertTypeChangeAllowed(newType: TaskType, childTypes: string[]): void {
+export async function assertTypeChangeAllowed(newType: TaskType, childTypes: string[]): Promise<void> {
   for (const ct of childTypes) {
     if (!ALLOWED_CHILDREN[newType]?.includes(ct)) {
-      throw new ApiError(
-        `Нельзя сменить тип на «${TYPE_LABELS_RU[newType]}»: у задачи есть потомки «${TYPE_LABELS_RU[ct]}», ` +
-          'а такая пара родитель/потомок не разрешена'
-      )
+      const newTypeLabel = await taskTypeLabel(newType)
+      const childTypeLabel = await taskTypeLabel(ct)
+      throw await apiError('cannotChangeTypeWithChildren', { newType: newTypeLabel, childType: childTypeLabel })
     }
   }
 }
@@ -196,11 +201,11 @@ export async function taskKeys(ids: string[]): Promise<Map<string, string>> {
  * — blocks не создаёт цикл любой длины.
  */
 export async function assertLinkAllowed(fromTaskId: string, toTaskId: string, type: LinkType): Promise<void> {
-  if (fromTaskId === toTaskId) throw new ApiError('Нельзя связать задачу с самой собой')
+  if (fromTaskId === toTaskId) throw await apiError('cannotLinkTaskToSelf')
   const from = await db.task.findUnique({ where: { id: fromTaskId }, select: { projectId: true } })
   const to = await db.task.findUnique({ where: { id: toTaskId }, select: { projectId: true } })
-  if (!from || !to) throw new ApiError('Задача не найдена', 404)
-  if (from.projectId !== to.projectId) throw new ApiError('Связывать можно только задачи одного проекта')
+  if (!from || !to) throw await apiError('taskNotFound', undefined, 404)
+  if (from.projectId !== to.projectId) throw await apiError('tasksMustBeSameProject')
 
   const existing = await db.link.findMany({
     where: { OR: [{ fromTaskId }, { toTaskId }] },
@@ -214,10 +219,10 @@ export async function assertLinkAllowed(fromTaskId: string, toTaskId: string, ty
         ((l.fromTaskId === fromTaskId && l.toTaskId === toTaskId) ||
           (l.fromTaskId === toTaskId && l.toTaskId === fromTaskId))
     )
-    if (dup) throw new ApiError('Такая связь уже существует')
+    if (dup) throw await apiError('linkAlreadyExists')
   } else {
     const dup = existing.find((l) => l.type === 'blocks' && l.fromTaskId === fromTaskId && l.toTaskId === toTaskId)
-    if (dup) throw new ApiError('Такая связь уже существует')
+    if (dup) throw await apiError('linkAlreadyExists')
     const graph = await loadBlocksGraph(from.projectId)
     const cycle = findBlocksCycleFromAdj(
       taskEndpoint(fromTaskId),
@@ -226,7 +231,7 @@ export async function assertLinkAllowed(fromTaskId: string, toTaskId: string, ty
     )
     if (cycle) {
       const pathStr = await formatCyclePath(cycle)
-      throw new ApiError(`Эта связь создаст цикл: ${pathStr}`)
+      throw await apiError('linkWouldCreateCycle', { path: pathStr })
     }
   }
 }
@@ -258,11 +263,12 @@ async function formatCyclePath(path: string[]): Promise<string> {
     for (const [id, key] of keys) labels.set(taskEndpoint(id), key)
   }
   if (groupIds.length) {
+    const t = await getApiTranslations()
     const groups = await db.graphNode.findMany({
       where: { id: { in: groupIds } },
       select: { id: true, text: true },
     })
-    for (const g of groups) labels.set(groupEndpoint(g.id), g.text?.trim() || 'Пачка')
+    for (const g of groups) labels.set(groupEndpoint(g.id), g.text?.trim() || t('groupDefaultLabel'))
   }
   return formatBlockPath(path, labels)
 }
@@ -275,26 +281,26 @@ export async function assertGraphEdgeAllowed(
   toNodeId: string,
   kind: string
 ): Promise<'canvas' | 'relates' | 'blocks'> {
-  if (!GRAPH_EDGE_KINDS.has(kind)) throw new ApiError('Некорректный тип связи')
+  if (!GRAPH_EDGE_KINDS.has(kind)) throw await apiError('invalidGraphEdgeKind')
   const k = kind as 'canvas' | 'relates' | 'blocks'
-  if (fromNodeId === toNodeId) throw new ApiError('Нельзя связать ноду с самой собой')
+  if (fromNodeId === toNodeId) throw await apiError('cannotLinkNodeToSelf')
 
   const nodes = await db.graphNode.findMany({
     where: { projectId, id: { in: [fromNodeId, toNodeId] } },
   })
-  if (nodes.length !== 2) throw new ApiError('Обе ноды должны принадлежать проекту')
+  if (nodes.length !== 2) throw await apiError('bothNodesMustBelongToProject')
   const from = nodes.find((n) => n.id === fromNodeId)!
   const to = nodes.find((n) => n.id === toNodeId)!
 
   const fromTask = from.refType === 'task'
   const toTask = to.refType === 'task'
   if (fromTask && toTask) {
-    throw new ApiError('Связь между задачами создаётся как blocks/relates задачи')
+    throw await apiError('taskToTaskEdgeUseTaskLinks')
   }
 
   const noteOrFile = (n: typeof from) => n.refType === 'note' || n.refType === 'attachment'
   if ((noteOrFile(from) || noteOrFile(to)) && k !== 'canvas') {
-    throw new ApiError('Заметки и файлы связываются только визуально')
+    throw await apiError('notesFilesVisualOnly')
   }
 
   const dup = await db.graphEdge.findFirst({
@@ -307,17 +313,17 @@ export async function assertGraphEdgeAllowed(
     },
     select: { id: true },
   })
-  if (dup) throw new ApiError('Эти ноды уже связаны')
+  if (dup) throw await apiError('nodesAlreadyLinked')
 
   if (k === 'blocks') {
     const a = nodeEndpoint(from)
     const b = nodeEndpoint(to)
-    if (!a || !b) throw new ApiError('blocks можно провести только к задаче или рамке')
+    if (!a || !b) throw await apiError('blocksOnlyToTaskOrGroup')
     const graph = await loadBlocksGraph(projectId)
     const cycle = findBlocksCycleFromAdj(a, b, blocksAdjacency(graph))
     if (cycle) {
       const pathStr = await formatCyclePath(cycle)
-      throw new ApiError(`Эта связь создаст цикл: ${pathStr}`)
+      throw await apiError('linkWouldCreateCycle', { path: pathStr })
     }
   }
   return k

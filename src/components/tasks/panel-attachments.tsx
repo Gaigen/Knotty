@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Download, Eye, Image as ImageIcon, Paperclip, Trash2, Upload } from 'lucide-react'
 import { FileMimeIcon } from '@/components/shared/bits'
@@ -10,12 +11,14 @@ import {
   CtxBackdrop, CtxContainer, CtxItem, type CtxPos,
 } from '@/components/shared/context-menu-helpers'
 import { attachmentFileUrl, useDeleteAttachment, useUploadAttachments } from '@/lib/api'
-import { formatSize, timeAgo } from '@/lib/format'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import type { AttachmentDto, TaskFullDto } from '@/lib/types'
 
 /** Вложения (ФТ-5.2): drag-n-drop, мультизагрузка, превью картинок, полноэкранный просмотр */
 export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch: (body: Record<string, unknown>) => Promise<unknown> }) {
+  const t = useTranslations('panels.attachments')
+  const { timeAgo, formatSize } = useFormatters()
   const upload = useUploadAttachments()
   const del = useDeleteAttachment()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -29,18 +32,22 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
     upload.mutate(
       { taskId: task.id, projectId: task.projectId, files: arr },
       {
-        onSuccess: (created) => toast.success(created.length > 1 ? `Загружено файлов: ${created.length}` : `Файл «${created[0]?.fileName}» загружен`),
+        onSuccess: (created) =>
+          toast.success(
+            created.length > 1
+              ? t('uploadedMany', { count: created.length })
+              : t('uploadedOne', { name: created[0]?.fileName ?? '' })
+          ),
         onError: (e) => toast.error(e.message),
       }
     )
   }
 
   function insertIntoDescription(att: AttachmentDto) {
-    // fix: вставляем Markdown-ссылку прямо в конец описания (ФТ-2.7), а не в буфер
     const md = `![${att.fileName}](attachment:${att.id})`
     const next = task.description ? `${task.description.replace(/\s+$/, '')}\n\n${md}\n` : `${md}\n`
     onPatch({ description: next })
-      .then(() => toast.success(`«${att.fileName}» вставлено в конец описания`))
+      .then(() => toast.success(t('inserted', { name: att.fileName })))
       .catch(() => {})
   }
 
@@ -60,7 +67,6 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
         uploadFiles(e.dataTransfer.files)
       }}
     >
-      {/* зона загрузки */}
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
@@ -68,11 +74,11 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
           'flex w-full flex-col items-center gap-1.5 rounded-xl border border-dashed p-6 text-center transition-colors',
           dragOver ? 'border-teal-600 bg-teal-50 dark:bg-teal-950/30' : 'hover:bg-muted/50'
         )}
-        aria-label="Загрузить файлы"
+        aria-label={t('uploadAria')}
       >
         <Upload className="h-5 w-5 text-muted-foreground" />
-        <span className="text-sm font-medium">Перетащите файлы или нажмите</span>
-        <span className="text-xs text-muted-foreground">до 10 МБ на файл · не более 50 МБ на задачу</span>
+        <span className="text-sm font-medium">{t('dropHint')}</span>
+        <span className="text-xs text-muted-foreground">{t('sizeHint')}</span>
       </button>
       <input
         ref={inputRef}
@@ -87,11 +93,10 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
 
       {upload.isPending && (
         <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Paperclip className="h-4 w-4 animate-pulse" /> Загрузка…
+          <Paperclip className="h-4 w-4 animate-pulse" /> {t('uploading')}
         </div>
       )}
 
-      {/* превью картинок */}
       {images.length > 0 && (
         <div className="mt-4 grid grid-cols-3 gap-2">
           {images.map((a) => (
@@ -100,7 +105,7 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
               type="button"
               className="group relative aspect-square overflow-hidden rounded-lg border bg-muted"
               onClick={() => setViewer(a)}
-              aria-label={`Открыть ${a.fileName}`}
+              aria-label={t('openAria', { name: a.fileName })}
             >
               <img
                 src={attachmentFileUrl(a.id, a.hasPreview)}
@@ -113,7 +118,6 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
         </div>
       )}
 
-      {/* таблица файлов */}
       {task.attachments.length > 0 && (
         <ul className="mt-4 space-y-1">
           {task.attachments.map((a) => (
@@ -139,7 +143,7 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
               <a
                 href={`${attachmentFileUrl(a.id)}?download=1`}
                 className="rounded p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                aria-label={`Скачать ${a.fileName}`}
+                aria-label={t('downloadAria', { name: a.fileName })}
                 download
               >
                 <Download className="h-3.5 w-3.5" />
@@ -149,8 +153,8 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
                   type="button"
                   onClick={() => insertIntoDescription(a)}
                   className="rounded p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                  title="Скопировать Markdown для вставки в описание"
-                  aria-label="Вставить в описание"
+                  title={t('insertTitle')}
+                  aria-label={t('insertAria')}
                 >
                   <ImageIcon className="h-3.5 w-3.5" />
                 </button>
@@ -158,12 +162,12 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm(`Удалить файл «${a.fileName}»?`)) {
+                  if (confirm(t('deleteConfirm', { name: a.fileName }))) {
                     del.mutate({ id: a.id, taskId: task.id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })
                   }
                 }}
                 className="rounded p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-destructive group-hover:opacity-100"
-                aria-label={`Удалить ${a.fileName}`}
+                aria-label={t('deleteAria', { name: a.fileName })}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -173,19 +177,18 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
       )}
 
       {task.attachments.length === 0 && !upload.isPending && (
-        <p className="mt-4 text-center text-sm text-muted-foreground">Вложений пока нет</p>
+        <p className="mt-4 text-center text-sm text-muted-foreground">{t('empty')}</p>
       )}
 
       <AttachmentViewer item={viewer} onClose={() => setViewer(null)} />
 
-      {/* Контекстное меню вложения по ПКМ */}
       {ctxMenu && (
         <>
           <CtxBackdrop onClose={() => setCtxMenu(null)} />
           <CtxContainer pos={ctxMenu.pos} minWidth={230}>
             <CtxItem
               icon={<Eye className="h-3.5 w-3.5" />}
-              label="Открыть"
+              label={t('open')}
               onClick={() => {
                 const a = ctxMenu.att
                 setCtxMenu(null)
@@ -194,7 +197,7 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
             />
             <CtxItem
               icon={<Download className="h-3.5 w-3.5" />}
-              label="Скачать"
+              label={t('download')}
               onClick={() => {
                 const a = ctxMenu.att
                 setCtxMenu(null)
@@ -207,7 +210,7 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
             {ctxMenu.att.mime.startsWith('image/') && (
               <CtxItem
                 icon={<ImageIcon className="h-3.5 w-3.5" />}
-                label="Вставить в описание"
+                label={t('insert')}
                 onClick={() => {
                   const a = ctxMenu.att
                   setCtxMenu(null)
@@ -217,12 +220,12 @@ export function PanelAttachments({ task, onPatch }: { task: TaskFullDto; onPatch
             )}
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить…"
+              label={t('delete')}
               danger
               onClick={() => {
                 const a = ctxMenu.att
                 setCtxMenu(null)
-                if (confirm(`Удалить файл «${a.fileName}»?`)) {
+                if (confirm(t('deleteConfirm', { name: a.fileName }))) {
                   del.mutate({ id: a.id, taskId: task.id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })
                 }
               }}

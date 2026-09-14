@@ -53,10 +53,19 @@ export const TASK_TYPES = ['epic', 'story', 'task', 'bug'] as const
 export const PRIORITIES = ['low', 'mid', 'high', 'crit'] as const
 export const LINK_TYPES = ['blocks', 'relates'] as const
 
-// П. 4.1.1 — допустимые пары родитель → потомок
+// Допустимые пары родитель → потомок (баг — лист, остальные типы без жёсткой иерархии)
 export const ALLOWED_CHILDREN: Record<string, string[]> = {
-  epic: ['story', 'task', 'bug'],
-  story: ['task', 'bug'],
-  task: ['bug'],
+  epic: [...TASK_TYPES],
+  story: [...TASK_TYPES],
+  task: [...TASK_TYPES],
   bug: [],
+}
+
+export function childTypesForParent(parentType: string): (typeof TASK_TYPES)[number][] {
+  const allowed = new Set(ALLOWED_CHILDREN[parentType] ?? [])
+  return TASK_TYPES.filter((t) => allowed.has(t))
+}
+
+export function parentTypesForChild(childType: string): string[] {
+  return (Object.keys(ALLOWED_CHILDREN) as string[]).filter((pt) => ALLOWED_CHILDREN[pt].includes(childType))
 }

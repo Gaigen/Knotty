@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { nextGraphPositions } from '@/lib/server/graph-positions'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: Params) {
     const body = await readJson<{ taskIds?: string[]; all?: boolean }>(req)
 
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const existing = await db.graphNode.findMany({
       where: { projectId, refType: 'task' },
@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: Params) {
       })
       taskIds = tasks.map((t) => t.id).filter((id) => !onCanvas.has(id))
     } else {
-      throw new ApiError('Укажите taskIds или all: true')
+      await apiError('specifyTaskIdsOrAll')
     }
 
     if (taskIds.length === 0) {
@@ -59,6 +59,6 @@ export async function POST(req: Request, { params }: Params) {
     publishProjectChange(projectId)
     return Response.json({ created: created.length, ids: created.map((n) => n.id) }, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import { encryptApiTokenPlain } from '@/lib/api-token-crypto'
 import { generateApiTokenPlain, hashApiToken } from '@/lib/api-tokens'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 /** Список API-токенов текущего пользователя (без секретов) */
 export async function GET() {
@@ -22,7 +22,7 @@ export async function GET() {
       }))
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -32,8 +32,8 @@ export async function POST(req: Request) {
     const user = await getCurrentUser()
     const body = await readJson<{ name?: string }>(req)
     const name = (body.name ?? '').trim()
-    if (!name) throw new ApiError('Укажите название токена (например «MCP Cursor»)')
-    if (name.length > 80) throw new ApiError('Название токена: максимум 80 символов')
+    if (!name) throw await apiError('tokenNameRequired')
+    if (name.length > 80) throw await apiError('tokenNameTooLong')
 
     const plain = generateApiTokenPlain()
     const row = await db.apiToken.create({
@@ -53,6 +53,6 @@ export async function POST(req: Request) {
       createdAt: row.createdAt.toISOString(),
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

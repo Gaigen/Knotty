@@ -1,26 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { CalendarDays, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
-
-const QUICK_DAYS: ReadonlyArray<[string, number]> = [
-  ['Сегодня', 0],
-  ['Завтра', 1],
-  ['+7 дней', 7],
-]
 
 function parseDueDate(iso: string | null): Date | undefined {
   if (!iso) return undefined
   const d = new Date(iso)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-}
-
-function formatDueDateLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 /** Срок задачи: popover-календарь (не нативный picker — не вылезает за узкую панель) */
@@ -35,8 +27,16 @@ export function DueDateField({
   triggerClassName?: string
   overdue?: boolean
 }) {
+  const t = useTranslations('taskPanel')
+  const { formatDate, locale } = useFormatters()
   const [open, setOpen] = useState(false)
   const selected = parseDueDate(dueDate)
+
+  const quickDays: ReadonlyArray<[string, number]> = [
+    [t('today'), 0],
+    [t('tomorrow'), 1],
+    [t('plus7Days'), 7],
+  ]
 
   function pickDate(d: Date) {
     const nd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0)
@@ -55,11 +55,11 @@ export function DueDateField({
               'h-8 min-w-0 justify-start gap-2 px-2.5 font-normal',
               triggerClassName ?? 'w-[150px]'
             )}
-            aria-label="Срок задачи"
+            aria-label={t('dueDateAria')}
           >
             <CalendarDays className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className={cn('truncate text-sm', !dueDate && 'text-muted-foreground')}>
-              {dueDate ? formatDueDateLabel(dueDate) : 'Выбрать дату'}
+              {dueDate ? formatDate(dueDate) : t('pickDate')}
             </span>
           </Button>
         </PopoverTrigger>
@@ -81,13 +81,13 @@ export function DueDateField({
             className="w-full"
             formatters={{
               formatCaption: (date) =>
-                date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
+                date.toLocaleDateString(locale, { month: 'long', year: 'numeric' }),
             }}
           />
         </PopoverContent>
       </Popover>
 
-      {QUICK_DAYS.map(([label, days]) => (
+      {quickDays.map(([label, days]) => (
         <button
           key={label}
           type="button"
@@ -108,13 +108,13 @@ export function DueDateField({
           className="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
           onClick={() => onDueDateChange(null)}
         >
-          <X className="h-3 w-3" /> Очистить
+          <X className="h-3 w-3" /> {t('clear')}
         </button>
       )}
 
       {overdue && dueDate && (
         <span className="text-[11px] font-medium text-red-600">
-          просрочено ({formatDueDateLabel(dueDate)})
+          {t('overdue', { date: formatDate(dueDate) })}
         </span>
       )}
     </div>

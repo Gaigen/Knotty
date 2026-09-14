@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { CircleHelp, ChevronUp } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Kbd } from '@/components/shared/bits'
 import { Button } from '@/components/ui/button'
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
@@ -23,6 +24,7 @@ function GraphHint({ keys, label }: { keys: ReactNode; label: string }) {
 
 /** Подсказки по управлению канвасом графа — сворачиваются, состояние в localStorage */
 export function GraphCanvasHints({ className }: { className?: string }) {
+  const t = useTranslations('graph.hints')
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -47,18 +49,18 @@ export function GraphCanvasHints({ className }: { className?: string }) {
         variant="ghost"
         size="sm"
         className="h-auto shrink-0 gap-1 rounded-none px-2 py-1.5 text-[10px] text-muted-foreground hover:bg-muted/60"
-        title={open ? 'Скрыть подсказки' : 'Показать подсказки по управлению'}
+        title={open ? t('hide') : t('show')}
         aria-expanded={open}
         onClick={() => setOpenPersist(!open)}
       >
         <CircleHelp className="h-3.5 w-3.5 shrink-0" />
-        {!open && <span>Управление</span>}
+        {!open && <span>{t('controls')}</span>}
         {open && <ChevronUp className="h-3 w-3 shrink-0 opacity-60" />}
       </Button>
 
       {open && (
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-l px-2.5 py-1.5">
-          <GraphHint keys={<Kbd>drag</Kbd>} label="выделение по фону" />
+          <GraphHint keys={<Kbd>drag</Kbd>} label={t('dragSelect')} />
           <GraphHint
             keys={
               <>
@@ -67,29 +69,29 @@ export function GraphCanvasHints({ className }: { className?: string }) {
                 <Kbd>Space</Kbd>
               </>
             }
-            label="панорама"
+            label={t('pan')}
           />
           <GraphHint
             keys={
               <>
                 <Kbd>Ctrl</Kbd>
                 <span className="text-[9px] text-muted-foreground/50">+</span>
-                <span>клик</span>
+                <span>{t('click')}</span>
               </>
             }
-            label="к выделению"
+            label={t('addToSelection')}
           />
           <GraphHint
             keys={
               <>
-                <span>связь</span>
+                <span>{t('edge')}</span>
                 <Kbd>×</Kbd>
               </>
             }
-            label="удалить"
+            label={t('edgeDelete')}
           />
-          <GraphHint keys={<Kbd>ПКМ</Kbd>} label="меню" />
-          <GraphHint keys={<Kbd>/</Kbd>} label="найти" />
+          <GraphHint keys={<Kbd>ПКМ</Kbd>} label={t('contextMenu')} />
+          <GraphHint keys={<Kbd>/</Kbd>} label={t('find')} />
           <GraphHint
             keys={
               <>
@@ -98,10 +100,10 @@ export function GraphCanvasHints({ className }: { className?: string }) {
                 <Kbd>Z</Kbd>
               </>
             }
-            label="отмена"
+            label={t('undo')}
           />
-          <GraphHint keys={<Kbd>↑↓←→</Kbd>} label="сдвиг" />
-          <GraphHint keys={<Kbd>+</Kbd>} label="зум" />
+          <GraphHint keys={<Kbd>↑↓←→</Kbd>} label={t('nudge')} />
+          <GraphHint keys={<Kbd>+</Kbd>} label={t('zoom')} />
         </div>
       )}
     </div>

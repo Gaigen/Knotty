@@ -1,38 +1,43 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { Bug, Layers, Bookmark, SquareCheckBig, ChevronDown, ChevronUp, Equal, Flame, ArrowUp, ArrowDownRight, User, File as FileIcon, FileText, FileArchive, Image as ImageIcon, Music, Video } from 'lucide-react'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
 import { cn } from '@/lib/utils'
 import type { UserDto } from '@/lib/types'
 
 // ---------- Тип задачи ----------
 
 export function TypeIcon({ type, className }: { type: string; className?: string }) {
+  const { typeLabel } = useEnumLabels()
   const cls = cn('h-4 w-4 shrink-0', className)
+  const label = typeLabel(type)
   switch (type) {
     case 'epic':
-      return <Layers className={cn(cls, 'text-violet-600')} aria-label="Эпик" />
+      return <Layers className={cn(cls, 'text-violet-600')} aria-label={label} />
     case 'story':
-      return <Bookmark className={cn(cls, 'text-emerald-600')} aria-label="Стори" />
+      return <Bookmark className={cn(cls, 'text-emerald-600')} aria-label={label} />
     case 'bug':
-      return <Bug className={cn(cls, 'text-red-600')} aria-label="Баг" />
+      return <Bug className={cn(cls, 'text-red-600')} aria-label={label} />
     default:
-      return <SquareCheckBig className={cn(cls, 'text-sky-700')} aria-label="Задача" />
+      return <SquareCheckBig className={cn(cls, 'text-sky-700')} aria-label={label} />
   }
 }
 
 // ---------- Приоритет ----------
 
 export function PriorityIcon({ priority, className }: { priority: string; className?: string }) {
+  const t = useTranslations('shared')
   const cls = cn('h-3.5 w-3.5 shrink-0', className)
   switch (priority) {
     case 'crit':
-      return <Flame className={cn(cls, 'text-red-600')} aria-label="Критический приоритет" />
+      return <Flame className={cn(cls, 'text-red-600')} aria-label={t('priorityCrit')} />
     case 'high':
-      return <ArrowUp className={cn(cls, 'text-orange-500')} aria-label="Высокий приоритет" />
+      return <ArrowUp className={cn(cls, 'text-orange-500')} aria-label={t('priorityHigh')} />
     case 'low':
-      return <ArrowDownRight className={cn(cls, 'text-slate-400')} aria-label="Низкий приоритет" />
+      return <ArrowDownRight className={cn(cls, 'text-slate-400')} aria-label={t('priorityLow')} />
     default:
-      return <Equal className={cn(cls, 'text-slate-400')} aria-label="Средний приоритет" />
+      return <Equal className={cn(cls, 'text-slate-400')} aria-label={t('priorityMid')} />
   }
 }
 
@@ -56,6 +61,7 @@ export function StatusBadge({ name, color, className }: { name: string; color: s
 // ---------- Пользователь ----------
 
 export function UserAvatar({ user, size = 24, className }: { user?: UserDto | null; size?: number; className?: string }) {
+  const tc = useTranslations('common')
   const initials = user?.name
     ?.split(' ')
     .map((p) => p[0])
@@ -88,7 +94,7 @@ export function UserAvatar({ user, size = 24, className }: { user?: UserDto | nu
       )}
       style={{ width: size, height: size, fontSize: Math.max(9, size * 0.42) }}
       title={user?.name}
-      aria-label={user ? user.name : 'Не назначен'}
+      aria-label={user ? user.name : tc('unassigned')}
     >
       {user ? initials : <User style={{ width: size * 0.55, height: size * 0.55 }} />}
     </span>
@@ -106,6 +112,7 @@ export function labelColor(label: string): string {
 }
 
 export function LabelChip({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  const t = useTranslations('shared')
   const color = labelColor(label)
   return (
     <span
@@ -121,7 +128,7 @@ export function LabelChip({ label, onRemove }: { label: string; onRemove?: () =>
             onRemove()
           }}
           className="rounded-full hover:bg-black/10 px-0.5 leading-none"
-          aria-label={`Убрать метку ${label}`}
+          aria-label={t('removeLabel', { label })}
         >
           ×
         </button>

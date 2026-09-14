@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Handle, NodeResizer, NodeToolbar, Position, type NodeProps } from '@xyflow/react'
 import { GripHorizontal, Maximize2, MessageSquare, Paperclip, Pencil, SquareArrowOutUpRight, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { MarkdownView, isMarkdownCheckboxInteraction } from '@/components/shared/markdown'
 import { TypeIcon, UserAvatar, PriorityIcon, LabelChip } from '@/components/shared/bits'
 import {
@@ -122,6 +123,7 @@ function TBtn({
 
 /** Нода-задача (ФТ-3.2). Тулбар при выделении, ресайз за углы, хэндлы на hover. */
 export function TaskNodeCard({ data, selected, id }: NodeProps) {
+  const t = useTranslations('graph')
   const d = data as TaskNodeData
   const s = d.snapshot
   const band = useZoomBand()
@@ -138,11 +140,11 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
     >
       <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
-          <TBtn title="Открыть задачу" onClick={() => d.onOpenTask?.(id, s.id)}>
+          <TBtn title={t('nodes.openTask')} onClick={() => d.onOpenTask?.(id, s.id)}>
             <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </TBtn>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-          <TBtn title="Удалить ноду с канваса" danger onClick={() => d.onDeleteNode?.(id, 'ноду (задача останется в проекте)')}>
+          <TBtn title={t('nodes.deleteTaskNode')} danger onClick={() => d.onDeleteNode?.(id, t('deleteLabels.taskNode'))}>
             <Trash2 className="h-3.5 w-3.5" />
           </TBtn>
         </div>
@@ -179,7 +181,7 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
               <button
                 type="button"
                 className="nodrag nopan rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                title={d.treeCollapsed ? 'Развернуть подзадачи' : 'Свернуть подзадачи'}
+                title={d.treeCollapsed ? t('nodes.expandSubtasks') : t('nodes.collapseSubtasks')}
                 onClick={(e) => {
                   e.stopPropagation()
                   d.onToggleTreeCollapse?.(id)
@@ -218,7 +220,7 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
               </span>
             )}
             {s.attachmentCount > 0 && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${s.attachmentCount} вложений`}>
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={t('nodes.attachmentsCount', { count: s.attachmentCount })}>
                 <Paperclip className="h-3 w-3" /> {s.attachmentCount}
               </span>
             )}
@@ -238,6 +240,8 @@ export function TaskNodeCard({ data, selected, id }: NodeProps) {
 
 /** Нода-заметка (ФТ-3.2): Markdown, редактирование двойным кликом, предпросмотр */
 export function NoteNodeCard({ data, selected, id }: NodeProps) {
+  const t = useTranslations('graph')
+  const tc = useTranslations('common')
   const d = data as NoteNodeData
   const band = useZoomBand()
   const far = band === 'far'
@@ -278,20 +282,20 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
       {/* Только с полоски — перетаскивание; клики в текст/чекбоксы не выделяют ноду */}
       <div
         className="note-drag-handle -mx-3 -mt-3 mb-1 flex cursor-grab items-center justify-center gap-1 rounded-t-[10px] border-b border-amber-200/50 py-0.5 text-amber-800/50 active:cursor-grabbing"
-        title="Перетащить заметку"
+        title={t('nodes.dragNote')}
       >
         <GripHorizontal className="h-3 w-3" />
       </div>
       <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
-          <TBtn title="Редактировать" onClick={() => setEditing(true)}>
+          <TBtn title={tc('edit')} onClick={() => setEditing(true)}>
             <Pencil className="h-3.5 w-3.5" />
           </TBtn>
-          <TBtn title="Предпросмотр" onClick={() => d.onExpand?.(id, d.text)}>
+          <TBtn title={t('nodes.preview')} onClick={() => d.onExpand?.(id, d.text)}>
             <Maximize2 className="h-3.5 w-3.5" />
           </TBtn>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-          <TBtn title="Удалить заметку" danger onClick={() => d.onDeleteNode?.(id, 'заметку')}>
+          <TBtn title={t('nodes.deleteNote')} danger onClick={() => d.onDeleteNode?.(id, t('deleteLabels.note'))}>
             <Trash2 className="h-3.5 w-3.5" />
           </TBtn>
         </div>
@@ -328,14 +332,14 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
             }}
             rows={5}
             className="nodrag nowheel h-full w-full flex-1 resize-none rounded-md border bg-white/90 p-1.5 font-mono text-xs outline-none dark:bg-background/70"
-            aria-label="Текст заметки"
+            aria-label={t('nodes.noteTextAria')}
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">Esc — выйти, клик вне — сохранить</p>
+          <p className="mt-1 text-[10px] text-muted-foreground">{t('nodes.noteEditHint')}</p>
         </div>
       ) : (
         <div
           className="custom-scroll nowheel nodrag nopan min-h-0 flex-1 overflow-y-auto"
-          title="Двойной клик — редактировать текст; чекбоксы кликабельны"
+          title={t('nodes.noteDoubleClickHint')}
         >
           {d.text?.trim() ? (
             <MarkdownView
@@ -349,7 +353,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
               }}
             />
           ) : (
-            <p className="text-xs italic text-muted-foreground">Пустая заметка — двойной клик для редактирования</p>
+            <p className="text-xs italic text-muted-foreground">{t('nodes.emptyNote')}</p>
           )}
         </div>
       )}
@@ -359,6 +363,7 @@ export function NoteNodeCard({ data, selected, id }: NodeProps) {
 
 /** Нода-вложение (ФТ-3.2): превью файла на канвасе + полноэкранный просмотр */
 export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
+  const t = useTranslations('graph')
   const d = data as AttachmentNodeData
   const a = d.attachment
   const kind = resolveAttachmentPreviewKind(a.mime, a.fileName)
@@ -376,11 +381,11 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
     >
       <NodeToolbar isVisible={selected && !far} position={Position.Top} offset={10} className="nodrag nopan">
         <div className="flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-lg">
-          <TBtn title="Открыть (полноэкранный просмотр)" onClick={() => d.onOpenPreview?.(a)}>
+          <TBtn title={t('nodes.openFullscreen')} onClick={() => d.onOpenPreview?.(a)}>
             <Maximize2 className="h-3.5 w-3.5" />
           </TBtn>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-          <TBtn title="Удалить ноду файла" danger onClick={() => d.onDeleteNode?.(id, 'ноду файла')}>
+          <TBtn title={t('nodes.deleteFileNode')} danger onClick={() => d.onDeleteNode?.(id, t('deleteLabels.fileNode'))}>
             <Trash2 className="h-3.5 w-3.5" />
           </TBtn>
         </div>
@@ -390,7 +395,7 @@ export function AttachmentNodeCard({ data, selected, id }: NodeProps) {
       <div className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
         <div
           className="attachment-drag-handle flex shrink-0 cursor-grab items-center justify-center border-b border-border/60 bg-muted/50 py-0.5 text-muted-foreground active:cursor-grabbing"
-          title="Перетащить файл"
+          title={t('nodes.dragFile')}
         >
           <GripHorizontal className="h-3 w-3" />
         </div>

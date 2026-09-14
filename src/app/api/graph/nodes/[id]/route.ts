@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { deleteStored } from '@/lib/server/storage'
 import { assertParentGroup, ungroupNode } from '@/lib/server/graph-groups'
 
@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: Params) {
     }>(req)
 
     const node = await db.graphNode.findUnique({ where: { id } })
-    if (!node) throw new ApiError('Нода не найдена', 404)
+    if (!node) await apiError('nodeNotFound', undefined, 404)
 
     if (body.parentId !== undefined) {
       await assertParentGroup(node.projectId, id, body.parentId)
@@ -39,7 +39,7 @@ export async function PATCH(req: Request, { params }: Params) {
       if (body.color === null) data.color = null
       else if (typeof body.color === 'string' && /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(body.color)) {
         data.color = body.color.toLowerCase()
-      } else throw new ApiError('Некорректный цвет (ожидается #RGB или #RRGGBB)', 400)
+      } else await apiError('invalidColor', undefined, 400)
     }
     if (body.parentId !== undefined) data.parentId = body.parentId
 
@@ -48,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params) {
     publishProjectChange(node.projectId, { scope: 'graph' })
     return Response.json({ ok: true, node: { id: updated.id, x: updated.x, y: updated.y, text: updated.text } })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -61,7 +61,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params
     await getCurrentUser()
     const node = await db.graphNode.findUnique({ where: { id } })
-    if (!node) throw new ApiError('Нода не найдена', 404)
+    if (!node) await apiError('nodeNotFound', undefined, 404)
 
     if (node.refType === 'group') {
       await ungroupNode(node.id, node.projectId)
@@ -83,6 +83,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     publishProjectChange(node.projectId)
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

@@ -33,13 +33,6 @@ export function saveGraphDisplayPrefs(projectId: string, prefs: GraphDisplayPref
   prefSet(prefKey(`graphDisplay:${projectId}`), JSON.stringify(prefs))
 }
 
-export const GRAPH_EDGE_PATH_OPTIONS: { id: GraphEdgePathStyle; label: string }[] = [
-  { id: 'bezier', label: 'Кривая' },
-  { id: 'smoothstep', label: 'Ступени' },
-  { id: 'straight', label: 'Прямая' },
-]
+export const GRAPH_EDGE_PATH_OPTIONS: GraphEdgePathStyle[] = ['bezier', 'smoothstep', 'straight']
 
-export const GRAPH_ARROW_STYLE_OPTIONS: { id: GraphArrowStyle; label: string }[] = [
-  { id: 'closed', label: 'Закрашенные' },
-  { id: 'open', label: 'Контур' },
-]
+export const GRAPH_ARROW_STYLE_OPTIONS: GraphArrowStyle[] = ['closed', 'open']

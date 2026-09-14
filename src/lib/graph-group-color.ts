@@ -1,11 +1,11 @@
 /** Палитра рамок на канвасе */
 export const GROUP_COLOR_PRESETS = [
-  { id: 'teal', hex: '#0d9488', label: 'Бирюза' },
-  { id: 'amber', hex: '#d97706', label: 'Янтарь' },
-  { id: 'violet', hex: '#7c3aed', label: 'Фиолет' },
-  { id: 'rose', hex: '#e11d48', label: 'Роза' },
-  { id: 'blue', hex: '#2563eb', label: 'Синий' },
-  { id: 'slate', hex: '#64748b', label: 'Серый' },
+  { id: 'teal', hex: '#0d9488' },
+  { id: 'amber', hex: '#d97706' },
+  { id: 'violet', hex: '#7c3aed' },
+  { id: 'rose', hex: '#e11d48' },
+  { id: 'blue', hex: '#2563eb' },
+  { id: 'slate', hex: '#64748b' },
 ] as const
 
 export const DEFAULT_GROUP_COLOR = GROUP_COLOR_PRESETS[0].hex

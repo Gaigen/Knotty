@@ -1,20 +1,122 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import {
   ArrowLeftRight, FileMinus2, FilePlus2, GitBranch, MessageSquare, MessageSquareOff, Pencil, PlusCircle,
 } from 'lucide-react'
 import { UserAvatar } from '@/components/shared/bits'
-import { formatDateTime } from '@/lib/format'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import type { TaskFullDto, ActivityDto } from '@/lib/types'
 
 /** История изменений (ФТ-5.3): «кто, что поменял, когда»; показываем последние 100 событий */
 export function PanelHistory({ task }: { task: TaskFullDto }) {
-  if (task.activity.length === 0) {
-    return <p className="p-6 text-center text-sm text-muted-foreground">История пуста</p>
+  const t = useTranslations('panels.history')
+  const { typeLabel, priorityLabel } = useEnumLabels()
+  const { formatDateTime, formatDate } = useFormatters()
+
+  function fmtValue(v: unknown): string {
+    if (v === null || v === undefined) return '—'
+    if (typeof v === 'boolean') return v ? t('yes') : t('no')
+    if (Array.isArray(v)) return v.join(', ')
+    if (typeof v === 'string') {
+      if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
+        try {
+          return formatDate(v)
+        } catch {
+          return v
+        }
+      }
+      if (['low', 'mid', 'high', 'crit'].includes(v)) return priorityLabel(v)
+      if (['epic', 'story', 'task', 'bug'].includes(v)) return typeLabel(v)
+      return v
+    }
+    return JSON.stringify(v)
   }
+
+  function fieldLabel(field: unknown): string {
+    if (typeof field === 'string' && field in { title: 1, description: 1, type: 1, assigneeId: 1, priority: 1, dueDate: 1, labels: 1, parentId: 1 }) {
+      return t(`fields.${field as 'title'}`)
+    }
+    return typeof field === 'string' ? field : t('fieldDefault')
+  }
+
+  function linkTypeLabel(linkType: unknown): string {
+    if (linkType === 'blocks') return t('linkBlocks')
+    if (linkType === 'relates') return t('linkRelates')
+    return String(linkType)
+  }
+
+  function describeEvent(a: ActivityDto): string {
+    const p = a.payload as Record<string, unknown>
+    switch (a.event) {
+      case 'created':
+        return t('created')
+      case 'status_changed':
+        return t('statusChanged', { old: fmtValue(p.old), new: fmtValue(p.new) })
+      case 'commented':
+        return t('commented')
+      case 'comment_edited':
+        return t('commentEdited')
+      case 'comment_deleted':
+        return t('commentDeleted')
+      case 'file_added':
+        return t('fileAdded', { name: fmtValue(p.fileName) })
+      case 'file_removed':
+        return t('fileRemoved', { name: fmtValue(p.fileName) })
+      case 'linked':
+        return p.direction === 'in'
+          ? t('linkedIn')
+          : t('linkedOut', {
+              type: linkTypeLabel(p.type),
+              other: p.otherKey ? t('linkedOutWith', { key: fmtValue(p.otherKey) }) : '',
+            })
+      case 'unlinked':
+        return t('unlinked', {
+          other: p.otherKey ? t('unlinkedWith', { key: fmtValue(p.otherKey) }) : '',
+        })
+      case 'field_changed': {
+        const field = (p.field as string) || fieldLabel(p.fieldLabel)
+        const fieldKey = typeof p.field === 'string' ? p.field : null
+        if (fieldKey === 'description') return t('descriptionChanged')
+        if (fieldKey === 'labels') return t('labelsChanged')
+        const oldV = p.old === null || p.old === undefined ? '—' : fmtValue(p.old)
+        const newV = p.new === null || p.new === undefined ? '—' : fmtValue(p.new)
+        if (fieldKey === 'dueDate') {
+          return t('dueChanged', {
+            old: oldV === '—' ? t('noDue') : oldV,
+            new: newV === '—' ? t('noDue') : newV,
+          })
+        }
+        if (fieldKey === 'assigneeId') {
+          return t('assigneeChanged', { name: newV === '—' ? t('notAssigned') : newV })
+        }
+        if (fieldKey === 'parentId') {
+          return t('parentChanged', {
+            old: oldV === '—' ? t('noParent') : oldV,
+            new: newV === '—' ? t('noParent') : newV,
+          })
+        }
+        if (fieldKey === 'title') return t('titleChanged')
+        if (fieldKey === 'priority') return t('priorityChanged', { old: oldV, new: newV })
+        if (fieldKey === 'type') return t('typeChanged', { old: oldV, new: newV })
+        const label = fieldLabel(fieldKey ?? p.fieldLabel)
+        return oldV !== newV
+          ? t('fieldGeneric', { field: label, old: oldV, new: newV })
+          : t('fieldGeneric', { field: label, old: oldV, new: newV })
+      }
+      default:
+        return a.event
+    }
+  }
+
+  if (task.activity.length === 0) {
+    return <p className="p-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
+  }
+
   return (
     <div>
-      <ol className="space-y-0 p-4" aria-label="История изменений">
+      <ol className="space-y-0 p-4" aria-label={t('aria')}>
         {task.activity.map((a, i) => (
           <li key={a.id} className="relative flex gap-3 pb-4">
             {i < task.activity.length - 1 && <span className="absolute left-[13px] top-8 h-full w-px bg-border" aria-hidden />}
@@ -30,85 +132,10 @@ export function PanelHistory({ task }: { task: TaskFullDto }) {
         ))}
       </ol>
       {task.activity.length >= 100 && (
-        <p className="border-t px-4 py-2 text-center text-xs text-muted-foreground">
-          Показаны последние 100 событий
-        </p>
+        <p className="border-t px-4 py-2 text-center text-xs text-muted-foreground">{t('truncated')}</p>
       )}
     </div>
   )
-}
-
-function describeEvent(a: ActivityDto): string {
-  const p = a.payload as Record<string, unknown>
-  switch (a.event) {
-    case 'created':
-      return `создал(а) задачу`
-    case 'status_changed':
-      return `изменил(а) статус: ${fmt(p.old)} → ${fmt(p.new)}`
-    case 'commented':
-      return 'оставил(а) комментарий'
-    case 'comment_edited':
-      return 'изменил(а) комментарий'
-    case 'comment_deleted':
-      return 'удалил(а) комментарий'
-    case 'file_added':
-      return `добавил(а) файл «${fmt(p.fileName)}»`
-    case 'file_removed':
-      return `удалил(а) файл «${fmt(p.fileName)}»`
-    case 'linked':
-      return p.direction === 'in' ? 'добавил(а) входящую связь' : `создал(а) связь (${linkType(p.type)})${p.otherKey ? ` с ${fmt(p.otherKey)}` : ''}`
-    case 'unlinked':
-      return `удалил(а) связь${p.otherKey ? ` с ${fmt(p.otherKey)}` : ''}`
-    case 'field_changed': {
-      const label = fmt(p.fieldLabel) || 'поле'
-      if (label === 'описание') return 'изменил(а) описание'
-      if (label === 'метки') return `обновил(а) метки`
-      const oldV = p.old === null || p.old === undefined ? '—' : fmt(p.old)
-      const newV = p.new === null || p.new === undefined ? '—' : fmt(p.new)
-      if (label === 'срок') return `изменил(а) срок: ${oldV === '—' ? 'без срока' : oldV} → ${newV === '—' ? 'без срока' : newV}`
-      if (label === 'исполнитель') return `сменил(а) исполнителя → ${newV === '—' ? 'не назначен' : newV}`
-      if (label === 'родитель') {
-        const from = oldV === '—' ? 'без родителя' : oldV
-        const to = newV === '—' ? 'без родителя' : newV
-        return `изменил(а) родителя: ${from} → ${to}`
-      }
-      if (label === 'название') return `переименовал(а) задачу`
-      if (label === 'приоритет') return `изменил(а) приоритет: ${oldV} → ${newV}`
-      if (label === 'тип') return `изменил(а) тип: ${oldV} → ${newV}`
-      return `изменил(а) ${label}${oldV !== newV ? `: ${oldV} → ${newV}` : ''}`
-    }
-    default:
-      return a.event
-  }
-}
-
-function linkType(t: unknown): string {
-  if (t === 'blocks') return 'блокирует'
-  if (t === 'relates') return 'связана'
-  return String(t)
-}
-
-function fmt(v: unknown): string {
-  if (v === null || v === undefined) return '—'
-  if (typeof v === 'boolean') return v ? 'да' : 'нет'
-  if (Array.isArray(v)) return v.join(', ')
-  if (typeof v === 'string') {
-    // даты ISO → читаемый вид
-    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
-      try {
-        return new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
-      } catch {
-        return v
-      }
-    }
-    // приоритет/тип — локализация
-    const map: Record<string, string> = {
-      low: 'низкий', mid: 'средний', high: 'высокий', crit: 'критический',
-      epic: 'эпик', story: 'стори', task: 'задача', bug: 'баг',
-    }
-    return map[v] ?? v
-  }
-  return JSON.stringify(v)
 }
 
 function EventIcon({ event }: { event: ActivityDto }) {

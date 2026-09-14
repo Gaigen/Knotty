@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Pencil, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,11 +12,14 @@ import {
 } from '@/components/shared/context-menu-helpers'
 import type { CommentDto, TaskFullDto } from '@/lib/types'
 import { useAddComment, useDeleteComment, useUpdateComment } from '@/lib/api'
-import { timeAgo } from '@/lib/format'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 
 /** Комментарии (ФТ-2.7): Markdown, Enter — отправить, Shift+Enter — перенос */
 export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Record<string, unknown>) => Promise<unknown> }) {
+  const t = useTranslations('panels.comments')
+  const tc = useTranslations('common')
+  const { timeAgo, formatDateTime } = useFormatters()
   const add = useAddComment()
   const update = useUpdateComment()
   const del = useDeleteComment()
@@ -27,7 +31,6 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
   const [ctxMenu, setCtxMenu] = useState<{ pos: CtxPos; comment: CommentDto } | null>(null)
 
   useEffect(() => {
-    // прокрутка к последнему комментарию при открытии
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [task.id])
 
@@ -47,9 +50,7 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div ref={listRef} className="custom-scroll min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
         {task.comments.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Комментариев пока нет. Обсудите задачу — история сохранится.
-          </p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{t('empty')}</p>
         )}
         {task.comments.map((c) => {
           const editing = editingId === c.id
@@ -66,7 +67,7 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{c.author.name}</span>
-                  <span className="text-xs text-muted-foreground" title={new Date(c.createdAt).toLocaleString('ru-RU')}>
+                  <span className="text-xs text-muted-foreground" title={formatDateTime(c.createdAt)}>
                     {timeAgo(c.createdAt)}
                   </span>
                   <span className="ml-auto flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -77,7 +78,7 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
                         setEditingId(c.id)
                         setEditDraft(c.body)
                       }}
-                      aria-label="Редактировать комментарий"
+                      aria-label={t('editAria')}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -85,11 +86,11 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
                       type="button"
                       className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive"
                       onClick={() => {
-                        if (confirm('Удалить комментарий?')) {
+                        if (confirm(t('deleteConfirm'))) {
                           del.mutate({ id: c.id, taskId: task.id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })
                         }
                       }}
-                      aria-label="Удалить комментарий"
+                      aria-label={t('deleteAria')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -117,10 +118,10 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
                           )
                         }}
                       >
-                        Сохранить
+                        {tc('save')}
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditingId(null)}>
-                        Отмена
+                        {tc('cancel')}
                       </Button>
                     </div>
                   </div>
@@ -128,7 +129,7 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
                   <div className={cn('mt-0.5 rounded-lg rounded-tl-none border bg-muted/40 px-3 py-2')}>
                     <MarkdownView source={c.body} compact />
                     {c.updatedAt !== c.createdAt && (
-                      <span className="mt-1 block text-[11px] text-muted-foreground">изменён {timeAgo(c.updatedAt)}</span>
+                      <span className="mt-1 block text-[11px] text-muted-foreground">{t('edited', { time: timeAgo(c.updatedAt) })}</span>
                     )}
                   </div>
                 )}
@@ -138,7 +139,6 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
         })}
       </div>
 
-      {/* композер */}
       <div className="shrink-0 border-t bg-background p-3">
         <div className="relative">
           <textarea
@@ -152,37 +152,36 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
               }
             }}
             rows={2}
-            placeholder="Комментарий (Markdown). Enter — отправить, Shift+Enter — перенос"
+            placeholder={t('placeholder')}
             className="w-full resize-y rounded-lg border bg-background p-2.5 pr-8 text-sm outline-none ring-ring placeholder:text-muted-foreground/60 focus:ring-1"
-            aria-label="Новый комментарий"
+            aria-label={t('newComment')}
           />
           {draft && (
             <button
               type="button"
               className="absolute right-2 top-2 rounded p-1 text-muted-foreground hover:text-foreground"
               onClick={() => setDraft('')}
-              aria-label="Очистить"
+              aria-label={t('clear')}
             >
               <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
         <div className="mt-1.5 flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">Поддерживается Markdown</span>
+          <span className="text-[11px] text-muted-foreground">{t('markdownHint')}</span>
           <Button size="sm" className="h-7 text-xs" disabled={!draft.trim() || add.isPending} onClick={submit}>
-            {add.isPending ? 'Отправка…' : 'Отправить'}
+            {add.isPending ? t('sending') : t('send')}
           </Button>
         </div>
       </div>
 
-      {/* Контекстное меню комментария по ПКМ */}
       {ctxMenu && (
         <>
           <CtxBackdrop onClose={() => setCtxMenu(null)} />
           <CtxContainer pos={ctxMenu.pos} minWidth={220}>
             <CtxItem
               icon={<Pencil className="h-3.5 w-3.5" />}
-              label="Редактировать"
+              label={t('edit')}
               onClick={() => {
                 const c = ctxMenu.comment
                 setCtxMenu(null)
@@ -193,12 +192,12 @@ export function PanelComments({ task }: { task: TaskFullDto; onPatch: (body: Rec
             <CtxSeparator />
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить"
+              label={t('delete')}
               danger
               onClick={() => {
                 const c = ctxMenu.comment
                 setCtxMenu(null)
-                if (confirm('Удалить комментарий?')) {
+                if (confirm(t('deleteConfirm'))) {
                   del.mutate({ id: c.id, taskId: task.id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })
                 }
               }}

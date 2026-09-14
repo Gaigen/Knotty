@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 
@@ -12,14 +12,14 @@ export async function PATCH(req: Request, { params }: Params) {
     const user = await getCurrentUser()
     const body = await readJson<{ body?: string }>(req)
     const text = (body.body ?? '').trim()
-    if (!text) throw new ApiError('Комментарий не может быть пустым')
+    if (!text) await apiError('commentEmpty')
 
     const comment = await db.comment.findUnique({
       where: { id },
       include: { task: { select: { projectId: true } } },
     })
-    if (!comment) throw new ApiError('Комментарий не найден', 404)
-    if (comment.authorId !== user.id) throw new ApiError('Можно редактировать только свои комментарии', 403)
+    if (!comment) await apiError('commentNotFound', undefined, 404)
+    if (comment.authorId !== user.id) await apiError('canOnlyEditOwnComments', undefined, 403)
 
     const updated = await db.comment.update({ where: { id }, data: { body: text } })
     await logActivity(comment.taskId, user.id, 'comment_edited', { commentId: id })
@@ -33,7 +33,7 @@ export async function PATCH(req: Request, { params }: Params) {
       updatedAt: updated.updatedAt.toISOString(),
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -45,13 +45,13 @@ export async function DELETE(_req: Request, { params }: Params) {
       where: { id },
       include: { task: { select: { projectId: true } } },
     })
-    if (!comment) throw new ApiError('Комментарий не найден', 404)
-    if (comment.authorId !== user.id) throw new ApiError('Можно удалять только свои комментарии', 403)
+    if (!comment) await apiError('commentNotFound', undefined, 404)
+    if (comment.authorId !== user.id) await apiError('canOnlyDeleteOwnComments', undefined, 403)
     await logActivity(comment.taskId, user.id, 'comment_deleted', { commentId: id })
     await db.comment.delete({ where: { id } })
     publishProjectChange(comment.task.projectId, { taskId: comment.taskId, scope: 'task' })
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

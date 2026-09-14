@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { hashPassword, sessionCookie, signSessionToken, validatePassword, verifyPassword } from '@/lib/auth'
 
 function isSecure(req: Request): boolean {
@@ -21,11 +21,11 @@ export async function POST(req: Request) {
 
     // у аккаунта мог не быть пароля (наследие сид-данных) — тогда старый не проверяем
     if (user.passwordHash && !(await verifyPassword(currentPassword, user.passwordHash))) {
-      throw new ApiError('Текущий пароль неверен')
+      throw await apiError('currentPasswordWrong')
     }
 
     const pwError = validatePassword(newPassword)
-    if (pwError) throw new ApiError(pwError)
+    if (pwError) throw await apiError(pwError)
 
     const updated = await db.user.update({
       where: { id: user.id },
@@ -38,6 +38,6 @@ export async function POST(req: Request) {
     res.headers.append('Set-Cookie', sessionCookie(token, isSecure(req)))
     return res
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

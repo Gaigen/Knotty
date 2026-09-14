@@ -1,5 +1,5 @@
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { importProjectFromExport, type ProjectExportV1 } from '@/lib/server/project-import'
 import { parseProjectImportBundle } from '@/lib/server/project-bundle'
 
@@ -11,9 +11,9 @@ export async function POST(req: Request) {
 
     if (contentType.includes('multipart/form-data')) {
       const form = await req.formData().catch(() => null)
-      if (!form) throw new ApiError('Ожидается multipart/form-data')
+      if (!form) throw await apiError('multipartExpected')
       const file = form.get('file')
-      if (!(file instanceof File)) throw new ApiError('Поле file не передано')
+      if (!(file instanceof File)) throw await apiError('fileFieldMissing')
       const keyOverride = String(form.get('key') ?? '').trim().toUpperCase() || undefined
 
       const bytes = new Uint8Array(await file.arrayBuffer())
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       if (!isZip) {
         const text = new TextDecoder().decode(bytes)
         const data = JSON.parse(text) as ProjectExportV1
-        if (!data.format) throw new ApiError('Пустой или неверный JSON')
+        if (!data.format) throw await apiError('emptyOrInvalidJson')
         const result = await importProjectFromExport(user.id, data, { key: keyOverride })
         return Response.json(result, { status: 201 })
       }
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const body = await readJson<ProjectExportV1 & { key?: string }>(req)
     const { key: keyOverride, ...data } = body
-    if (!data.format) throw new ApiError('Пустой или неверный JSON')
+    if (!data.format) throw await apiError('emptyOrInvalidJson')
 
     const result = await importProjectFromExport(user.id, data as ProjectExportV1, {
       key: keyOverride?.trim().toUpperCase(),
@@ -41,6 +41,6 @@ export async function POST(req: Request) {
 
     return Response.json(result, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

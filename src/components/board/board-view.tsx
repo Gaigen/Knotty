@@ -29,6 +29,7 @@ const boardCollisionDetection: CollisionDetection = (args) => {
 }
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, closestCenter, pointerWithin, useDroppable, useSensor,
   useSensors, type CollisionDetection, type DragEndEvent, type DragOverEvent, type DragStartEvent,
@@ -50,8 +51,10 @@ import {
   CtxBackdrop, CtxContainer, CtxItem, CtxSeparator, CtxSubmenu, type CtxPos,
 } from '@/components/shared/context-menu-helpers'
 import { copyToClipboard, useDeleteTask, useTasks, useUpdateTask, useUsers } from '@/lib/api'
-import { PRIORITIES, PRIORITY_LABELS_RU } from '@/lib/config'
-import { formatDate, isOverdue } from '@/lib/format'
+import { PRIORITIES } from '@/lib/config'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
+import { isOverdue } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
 import { generateKeyBetween } from 'fractional-indexing'
@@ -82,6 +85,9 @@ export function BoardView({
   onOpenTask: (id: string) => void
   activeTaskId: string | null
 }) {
+  const tb = useTranslations('board')
+  const tc = useTranslations('common')
+  const { priorityLabel } = useEnumLabels()
   const [debounced, setDebounced] = useState('')
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300)
@@ -108,62 +114,62 @@ export function BoardView({
 
   function closeCtx() { setCtxMenu(null); setCtxSubmenu(null) }
 
-  async function duplicateTask(t: TaskRowDto) {
+  async function duplicateTask(task: TaskRowDto) {
     try {
       const res = await fetch(`/api/projects/${project.id}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: t.type,
-          title: `${t.title} (копия)`,
-          statusId: t.statusId,
-          assigneeId: t.assigneeId,
-          priority: t.priority,
-          dueDate: t.dueDate,
-          labels: t.labels,
-          parentId: t.parentId,
+          type: task.type,
+          title: `${task.title} ${tb('copySuffix')}`,
+          statusId: task.statusId,
+          assigneeId: task.assigneeId,
+          priority: task.priority,
+          dueDate: task.dueDate,
+          labels: task.labels,
+          parentId: task.parentId,
         }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Не удалось дублировать')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? tb('duplicateFailed'))
       const created = await res.json()
       qc.invalidateQueries({ queryKey: ['tasks', project.id] })
       qc.invalidateQueries({ queryKey: ['project', project.id] })
       qc.invalidateQueries({ queryKey: ['projects'] })
-      toast.success(`Создана копия ${created.key}`)
+      toast.success(tb('duplicateSuccess', { key: created.key }))
     } catch (e) {
       toast.error((e as Error).message)
     }
   }
 
-  async function copyKey(t: TaskRowDto) {
-    if (await copyToClipboard(t.key)) toast.success('Ключ скопирован')
-    else toast.error('Не удалось скопировать')
+  async function copyKey(task: TaskRowDto) {
+    if (await copyToClipboard(task.key)) toast.success(tb('keyCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
-  async function copyLink(t: TaskRowDto) {
-    const url = `${window.location.origin}/?project=${project.id}&tab=board&task=${t.id}`
-    if (await copyToClipboard(url)) toast.success('Ссылка скопирована')
-    else toast.error('Не удалось скопировать')
+  async function copyLink(task: TaskRowDto) {
+    const url = `${window.location.origin}/?project=${project.id}&tab=board&task=${task.id}`
+    if (await copyToClipboard(url)) toast.success(tb('linkCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
-  function patchField(t: TaskRowDto, field: 'statusId' | 'priority' | 'assigneeId', value: string | null) {
+  function patchField(task: TaskRowDto, field: 'statusId' | 'priority' | 'assigneeId', value: string | null) {
     update.mutate(
-      { id: t.id, projectId: project.id, [field]: value },
+      { id: task.id, projectId: project.id, [field]: value },
       { onError: (e) => toast.error(e.message) }
     )
   }
 
-  function markDone(t: TaskRowDto) {
+  function markDone(task: TaskRowDto) {
     const done = [...project.statuses].filter((s) => s.category === 3).sort((a, b) => b.order - a.order)[0]
-    if (done) patchField(t, 'statusId', done.id)
-    else toast.error('В проекте нет статуса с категорией «Готово»')
+    if (done) patchField(task, 'statusId', done.id)
+    else toast.error(tb('noDoneStatus'))
   }
 
-  function deleteTask(t: TaskRowDto) {
-    if (!confirm(`Удалить задачу ${t.key}?\n\nПодзадачи открепятся, связи, вложения и комментарии удалятся.`)) return
+  function deleteTask(task: TaskRowDto) {
+    if (!confirm(tb('deleteConfirm', { key: task.key }))) return
     delMut.mutate(
-      { id: t.id, projectId: project.id },
-      { onSuccess: () => toast.success('Задача удалена'), onError: (e) => toast.error(e.message) }
+      { id: task.id, projectId: project.id },
+      { onSuccess: () => toast.success(tb('taskDeleted')), onError: (e) => toast.error(e.message) }
     )
   }
 
@@ -253,7 +259,7 @@ export function BoardView({
               body: JSON.stringify({ title, statusId: status.id, type: 'task' }),
             })
               .then(async (r) => {
-                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Ошибка создания')
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? tb('createError'))
                 qc.invalidateQueries({ queryKey: ['tasks', project.id] })
                 qc.invalidateQueries({ queryKey: ['projects'] })
               })
@@ -300,7 +306,7 @@ export function BoardView({
               body: JSON.stringify({ title, statusId: status.id, type: 'task' }),
             })
               .then(async (r) => {
-                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? 'Ошибка создания')
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? tb('createError'))
                 qc.invalidateQueries({ queryKey: ['tasks', project.id] })
                 qc.invalidateQueries({ queryKey: ['projects'] })
               })
@@ -471,8 +477,8 @@ export function BoardView({
       <div className="flex flex-1 items-center justify-center p-6">
         <EmptyState
           icon={<MonitorSmartphone className="h-10 w-10" />}
-          title="Доска доступна с компьютера"
-          description="Канбан с перетаскиванием карточек рассчитан на большой экран. Откройте раздел «Задачи» — он адаптирован под мобильные."
+          title={tb('mobileTitle')}
+          description={tb('mobileDescription')}
         />
       </div>
     )
@@ -502,14 +508,10 @@ export function BoardView({
           )}
           onClick={toggleFitAll}
           aria-pressed={fitAll}
-          title={
-            fitAll
-              ? 'Обычный вид доски'
-              : 'Все статусы на экране (компактные колонки, перетаскивание между ними)'
-          }
+          title={fitAll ? tb('fitAllNormalTitle') : tb('fitAllCompactTitle')}
         >
           <StretchHorizontal className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{fitAll ? 'Обычный вид' : 'Все колонки'}</span>
+          <span className="hidden sm:inline">{fitAll ? tb('fitAllNormal') : tb('fitAllCompact')}</span>
         </Button>
       </FiltersBar>
 
@@ -580,47 +582,47 @@ export function BoardView({
           <CtxContainer pos={ctxMenu.pos} minWidth={240}>
             <CtxItem
               icon={<ArrowRight className="h-3.5 w-3.5" />}
-              label="Открыть"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); onOpenTask(t.id) }}
+              label={tb('ctxOpen')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); onOpenTask(task.id) }}
             />
             <CtxItem
               icon={<ExternalLink className="h-3.5 w-3.5" />}
-              label="Открыть в новой вкладке"
+              label={tb('ctxOpenNewTab')}
               onClick={() => {
-                const t = ctxMenu.task
-                window.open(`/?project=${project.id}&tab=board&task=${t.id}`, '_blank', 'noopener')
+                const task = ctxMenu.task
+                window.open(`/?project=${project.id}&tab=board&task=${task.id}`, '_blank', 'noopener')
                 closeCtx()
               }}
             />
             <CtxItem
               icon={<CopyPlus className="h-3.5 w-3.5" />}
-              label="Дублировать"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); duplicateTask(t) }}
+              label={tb('ctxDuplicate')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); duplicateTask(task) }}
             />
             <CtxSeparator />
             <CtxItem
               icon={<Copy className="h-3.5 w-3.5" />}
-              label="Копировать ключ"
-              onClick={() => { const t = ctxMenu.task; copyKey(t); closeCtx() }}
+              label={tb('ctxCopyKey')}
+              onClick={() => { const task = ctxMenu.task; copyKey(task); closeCtx() }}
             />
             <CtxItem
               icon={<Copy className="h-3.5 w-3.5" />}
-              label="Копировать ссылку"
-              onClick={() => { const t = ctxMenu.task; copyLink(t); closeCtx() }}
+              label={tb('ctxCopyLink')}
+              onClick={() => { const task = ctxMenu.task; copyLink(task); closeCtx() }}
             />
             <CtxSeparator />
             <CtxSubmenu
               open={ctxSubmenu === 'status'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'status' ? null : 'status')}
               icon={<GitBranch className="h-3.5 w-3.5" />}
-              label="Статус"
+              label={tb('ctxStatus')}
             >
               {project.statuses.map((s) => (
                 <CtxItem
                   key={s.id}
                   dot={s.color}
                   label={s.name}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'statusId', s.id); closeCtx() }}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'statusId', s.id); closeCtx() }}
                 />
               ))}
             </CtxSubmenu>
@@ -628,13 +630,13 @@ export function BoardView({
               open={ctxSubmenu === 'priority'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'priority' ? null : 'priority')}
               icon={<Flame className="h-3.5 w-3.5" />}
-              label="Приоритет"
+              label={tb('ctxPriority')}
             >
               {PRIORITIES.map((p) => (
                 <CtxItem
                   key={p}
-                  label={PRIORITY_LABELS_RU[p]}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'priority', p); closeCtx() }}
+                  label={priorityLabel(p)}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'priority', p); closeCtx() }}
                 />
               ))}
             </CtxSubmenu>
@@ -642,34 +644,34 @@ export function BoardView({
               open={ctxSubmenu === 'assignee'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'assignee' ? null : 'assignee')}
               icon={<UserCircle2 className="h-3.5 w-3.5" />}
-              label="Исполнитель"
+              label={tb('ctxAssignee')}
             >
               {users.map((u) => (
                 <CtxItem
                   key={u.id}
                   avatar={<UserAvatar user={u} size={16} />}
                   label={u.name}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'assigneeId', u.id); closeCtx() }}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'assigneeId', u.id); closeCtx() }}
                 />
               ))}
               <CtxSeparator />
               <CtxItem
-                label="Не назначен"
-                onClick={() => { const t = ctxMenu.task; patchField(t, 'assigneeId', null); closeCtx() }}
+                label={tc('unassigned')}
+                onClick={() => { const task = ctxMenu.task; patchField(task, 'assigneeId', null); closeCtx() }}
               />
             </CtxSubmenu>
             <CtxSeparator />
             <CtxItem
               icon={<Check className="h-3.5 w-3.5 text-emerald-600" />}
-              label="Готово"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); markDone(t) }}
+              label={tb('done')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); markDone(task) }}
             />
             <CtxSeparator />
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить…"
+              label={tb('deleteEllipsis')}
               danger
-              onClick={() => { const t = ctxMenu.task; closeCtx(); deleteTask(t) }}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); deleteTask(task) }}
             />
           </CtxContainer>
         </>
@@ -693,6 +695,7 @@ function CollapsedColumn({
   count: number
   onExpand: () => void
 }) {
+  const tb = useTranslations('board')
   // fix: свёрнутая колонка — полноправная зона drops: карточка меняет статус,
   // при этом клик по полоске по-прежнему разворачивает колонку
   const { setNodeRef, isOver } = useDroppable({ id: `col:${status.id}` })
@@ -708,7 +711,7 @@ function CollapsedColumn({
         type="button"
         onClick={onExpand}
         className="flex h-full w-full min-h-0 flex-col items-center gap-2 py-0"
-        aria-label={`Развернуть колонку ${status.name}`}
+        aria-label={tb('expandColumn', { name: status.name })}
       >
         <ChevronsRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: status.color }} />
@@ -756,6 +759,7 @@ function BoardColumn({
   onPatchCard,
   onContextMenu,
 }: ColumnProps) {
+  const tb = useTranslations('board')
   const { setNodeRef, isOver } = useDroppable({ id: `col:${status.id}` })
   const [quickAdd, setQuickAdd] = useState(false)
   const [quickTitle, setQuickTitle] = useState('')
@@ -781,7 +785,7 @@ function BoardColumn({
         highlight && isOver && 'border-teal-600/60 bg-teal-50/60 dark:bg-teal-950/20'
       )}
       style={compact ? undefined : { width: colWidth ?? BOARD_COL_WIDTH, flexBasis: colWidth ?? BOARD_COL_WIDTH }}
-      aria-label={`Колонка ${status.name}`}
+      aria-label={tb('column', { name: status.name })}
     >
       {/* Заголовок колонки (ФТ-4.1) */}
       <div className={cn('flex items-center gap-1.5 pb-1 pt-2', compact ? 'px-2' : 'px-3 pt-2.5')}>
@@ -802,12 +806,12 @@ function BoardColumn({
             size="icon"
             className={compact ? 'h-5 w-5' : 'h-6 w-6'}
             onClick={() => setQuickAdd(true)}
-            aria-label={`Добавить задачу в «${status.name}»`}
+            aria-label={tb('addTaskTo', { name: status.name })}
           >
             <Plus className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
           </Button>
           {allowCollapse && !compact && (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCollapse} aria-label={`Свернуть колонку ${status.name}`}>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onCollapse} aria-label={tb('collapseColumn', { name: status.name })}>
               <ChevronsLeft className="h-3.5 w-3.5" />
             </Button>
           )}
@@ -838,7 +842,7 @@ function BoardColumn({
             }}
             onBlur={commitQuickAdd}
             rows={2}
-            placeholder="Название задачи, Enter — создать"
+            placeholder={tb('quickAddPlaceholder')}
             className="w-full resize-none rounded-lg border bg-background p-2 text-sm outline-none ring-ring focus:ring-1"
           />
         </div>
@@ -873,7 +877,7 @@ function BoardColumn({
               onClick={() => setQuickAdd(true)}
               className="rounded-lg border border-dashed px-3 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted/60"
             >
-              Перетащите карточку или создайте новую
+              {tb('emptyColumn')}
             </button>
           )}
         </div>
@@ -959,6 +963,10 @@ function BoardCard({
   onPatchCard?: (id: string, body: Record<string, unknown>) => void
   ghost?: boolean
 }) {
+  const tb = useTranslations('board')
+  const tc = useTranslations('common')
+  const { priorityLabel } = useEnumLabels()
+  const { formatDate } = useFormatters()
   const status = statusById.get(task.statusId)
 
   return (
@@ -973,7 +981,7 @@ function BoardCard({
       role="button"
       tabIndex={ghost ? -1 : 0}
       onKeyDown={(e) => !ghost && e.key === 'Enter' && onOpenTask?.(task.id)}
-      aria-label={`Карточка ${task.key}: ${task.title}`}
+      aria-label={tb('cardAria', { key: task.key, title: task.title })}
     >
       <div className="flex flex-wrap items-start gap-x-1 gap-y-0.5">
         <TypeIcon type={task.type} className={cn('mt-0.5', compact ? 'h-3 w-3' : 'h-4 w-4')} />
@@ -987,13 +995,13 @@ function BoardCard({
                   type="button"
                   className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                   onClick={(e) => e.stopPropagation()}
-                  aria-label="Сменить исполнителя"
+                  aria-label={tb('changeAssignee')}
                 >
                   <UserAvatar user={assignee} size={16} />
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-44 p-1" onClick={(e) => e.stopPropagation()}>
-                <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Исполнитель</p>
+                <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{tb('assignee')}</p>
                 {users.map((u) => (
                   <button
                     key={u.id}
@@ -1009,7 +1017,7 @@ function BoardCard({
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                   onClick={() => onPatchCard(task.id, { assigneeId: null })}
                 >
-                  <UserAvatar user={null} size={18} /> Не назначен
+                  <UserAvatar user={null} size={18} /> {tc('unassigned')}
                 </button>
               </PopoverContent>
             </Popover>
@@ -1019,13 +1027,13 @@ function BoardCard({
                   type="button"
                   className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                   onClick={(e) => e.stopPropagation()}
-                  aria-label="Сменить приоритет"
+                  aria-label={tb('changePriority')}
                 >
                   <PriorityIcon priority={task.priority} />
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-40 p-1" onClick={(e) => e.stopPropagation()}>
-                <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Приоритет</p>
+                <p className="px-2 py-1 text-xs font-medium text-muted-foreground">{tb('priority')}</p>
                 {PRIORITIES.map((p) => (
                   <button
                     key={p}
@@ -1033,7 +1041,7 @@ function BoardCard({
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                     onClick={() => onPatchCard(task.id, { priority: p })}
                   >
-                    <PriorityIcon priority={p} /> {PRIORITY_LABELS_RU[p]}
+                    <PriorityIcon priority={p} /> {priorityLabel(p)}
                   </button>
                 ))}
               </PopoverContent>
@@ -1064,17 +1072,17 @@ function BoardCard({
       {!compact && (
         <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
           {task.dueDate && (
-            <span className={cn('inline-flex items-center gap-1', overdue && 'font-semibold text-red-600')} title="Срок">
+            <span className={cn('inline-flex items-center gap-1', overdue && 'font-semibold text-red-600')} title={tb('dueDateTitle')}>
               <CalendarClock className="h-3 w-3" /> {formatDate(task.dueDate)}
             </span>
           )}
           {task.commentCount > 0 && (
-            <span className="inline-flex items-center gap-0.5" title={`${task.commentCount} комментариев`}>
+            <span className="inline-flex items-center gap-0.5" title={tb('commentsTitle', { count: task.commentCount })}>
               <MessageSquare className="h-3 w-3" /> {task.commentCount}
             </span>
           )}
           {task.attachmentCount > 0 && (
-            <span className="inline-flex items-center gap-0.5" title={`${task.attachmentCount} вложений`}>
+            <span className="inline-flex items-center gap-0.5" title={tb('attachmentsTitle', { count: task.attachmentCount })}>
               <Paperclip className="h-3 w-3" /> {task.attachmentCount}
             </span>
           )}

@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 import {
@@ -61,7 +61,7 @@ async function attachmentFileResponse(
   download: boolean
 ): Promise<Response> {
   const size = await storedFileSize(key)
-  if (size == null) throw new ApiError('Файл не найден в хранилище', 404)
+  if (size == null) await apiError('fileNotInStorage', undefined, 404)
 
   const encodedName = encodeURIComponent(fileName)
   const disposition = download ? 'attachment' : 'inline'
@@ -75,7 +75,7 @@ async function attachmentFileResponse(
   const rangeHeader = req.headers.get('range')
   if (!rangeHeader) {
     const buffer = await readStored(key)
-    if (!buffer) throw new ApiError('Файл не найден в хранилище', 404)
+    if (!buffer) await apiError('fileNotInStorage', undefined, 404)
     return new Response(new Uint8Array(buffer), {
       headers: { ...baseHeaders, 'Content-Length': String(size) },
     })
@@ -90,7 +90,7 @@ async function attachmentFileResponse(
   }
 
   const chunk = await readStoredRange(key, range.start, range.end)
-  if (!chunk) throw new ApiError('Файл не найден в хранилище', 404)
+  if (!chunk) await apiError('fileNotInStorage', undefined, 404)
 
   return new Response(new Uint8Array(chunk), {
     status: 206,
@@ -111,14 +111,14 @@ export async function GET(req: Request, { params }: Params) {
     const download = url.searchParams.get('download') === '1'
 
     const attachment = await db.attachment.findUnique({ where: { id } })
-    if (!attachment) throw new ApiError('Вложение не найдено', 404)
+    if (!attachment) await apiError('attachmentNotFound', undefined, 404)
 
     const key = wantPreview && attachment.previewKey ? attachment.previewKey : attachment.storageKey
     const mime = attachmentContentMime(attachment, key)
 
     return await attachmentFileResponse(req, key, mime, attachment.fileName, download)
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -128,7 +128,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params
     const user = await getCurrentUser()
     const attachment = await db.attachment.findUnique({ where: { id } })
-    if (!attachment) throw new ApiError('Вложение не найдено', 404)
+    if (!attachment) await apiError('attachmentNotFound', undefined, 404)
     if (attachment.taskId) {
       await logActivity(attachment.taskId, user.id, 'file_removed', {
         fileName: attachment.fileName,
@@ -143,6 +143,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     if (attachment.previewKey) await deleteStored(attachment.previewKey)
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

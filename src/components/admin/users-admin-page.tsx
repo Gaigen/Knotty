@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useRouter } from '@/i18n/navigation'
 import { toast } from 'sonner'
 import { ArrowLeft, Mail, Pencil, ShieldCheck, Trash2, UserPlus, Users } from 'lucide-react'
 
@@ -36,7 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser, useMe } from '@/lib/api'
 import { UserAvatar } from '@/components/shared/bits'
-import { timeAgo } from '@/lib/format'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import type { UserDto } from '@/lib/types'
 
@@ -57,16 +58,20 @@ export interface UserFormValue {
   isAdmin: boolean
 }
 
-function validateForm(v: UserFormValue, isEdit: boolean): string | null {
-  if (!v.name.trim()) return 'Имя обязательно'
-  if (v.name.trim().length > 80) return 'Имя слишком длинное (макс. 80 символов)'
-  if (!EMAIL_RE.test(v.email.trim())) return 'Некорректный email'
+function validateForm(
+  v: UserFormValue,
+  isEdit: boolean,
+  t: ReturnType<typeof useTranslations<'admin'>>,
+  ta: ReturnType<typeof useTranslations<'auth'>>
+): string | null {
+  if (!v.name.trim()) return ta('nameRequired')
+  if (v.name.trim().length > 80) return t('nameTooLong')
+  if (!EMAIL_RE.test(v.email.trim())) return ta('invalidEmail')
   if (v.avatarUrl.trim() && !/^https?:\/\//i.test(v.avatarUrl.trim())) {
-    return 'Аватар: URL должен начинаться с http:// или https://'
+    return ta('avatarUrlInvalid')
   }
-  // при создании пароль обязателен; при редактировании — пустое поле = не менять
-  if (!isEdit && v.password.length < 6) return 'Пароль: минимум 6 символов'
-  if (v.password !== '' && v.password.length < 6) return 'Пароль: минимум 6 символов'
+  if (!isEdit && v.password.length < 6) return ta('passwordMin')
+  if (v.password !== '' && v.password.length < 6) return ta('passwordMin')
   return null
 }
 
@@ -90,6 +95,9 @@ function UserFormDialog({
   onSubmit: (v: UserFormValue) => void
   pending: boolean
 }) {
+  const t = useTranslations('admin')
+  const ta = useTranslations('auth')
+  const tc = useTranslations('common')
   const [form, setForm] = useState<UserFormValue>({
     name: '',
     email: '',
@@ -112,7 +120,7 @@ function UserFormDialog({
   const set = (patch: Partial<UserFormValue>) => setForm((f) => ({ ...f, ...patch }))
 
   const submit = () => {
-    const err = validateForm(form, isEdit)
+    const err = validateForm(form, isEdit, t, ta)
     if (err) {
       toast.error(err)
       return
@@ -124,11 +132,9 @@ function UserFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Редактировать пользователя' : 'Новый пользователь'}</DialogTitle>
+          <DialogTitle>{isEdit ? t('formEditTitle') : t('formCreateTitle')}</DialogTitle>
           <DialogDescription>
-            {isEdit
-              ? 'Изменения вступят в силу сразу. Пароль оставьте пустым, чтобы не менять.'
-              : 'Пользователь сразу появится в селекторе «Исполнитель» и сможет войти по выданному паролю.'}
+            {isEdit ? t('formEditDesc') : t('formCreateDesc')}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -139,18 +145,18 @@ function UserFormDialog({
           className="space-y-3"
         >
           <div className="space-y-1.5">
-            <Label htmlFor="user-name">Имя</Label>
+            <Label htmlFor="user-name">{ta('name')}</Label>
             <Input
               id="user-name"
               value={form.name}
               onChange={(e) => set({ name: e.target.value })}
-              placeholder="Иван Петров"
+              placeholder={ta('namePlaceholder')}
               autoFocus
               maxLength={80}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="user-email">Email</Label>
+            <Label htmlFor="user-email">{ta('email')}</Label>
             <Input
               id="user-email"
               type="email"
@@ -161,23 +167,23 @@ function UserFormDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="user-password">
-              {isEdit ? 'Новый пароль (пусто — не менять)' : 'Пароль для входа'}
+              {isEdit ? t('passwordEdit') : t('passwordCreate')}
             </Label>
             <Input
               id="user-password"
               type="password"
               value={form.password}
               onChange={(e) => set({ password: e.target.value })}
-              placeholder={isEdit ? 'оставьте пустым, чтобы не менять' : 'минимум 6 символов'}
+              placeholder={isEdit ? t('passwordEditPlaceholder') : ta('passwordMinPlaceholder')}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="user-avatar">URL аватара (необязательно)</Label>
+            <Label htmlFor="user-avatar">{t('avatarLabel')}</Label>
             <Input
               id="user-avatar"
               value={form.avatarUrl}
               onChange={(e) => set({ avatarUrl: e.target.value })}
-              placeholder="https://example.com/avatar.png"
+              placeholder={t('avatarPlaceholder')}
             />
           </div>
           <label
@@ -190,18 +196,18 @@ function UserFormDialog({
               onCheckedChange={(v) => set({ isAdmin: v === true })}
             />
             <span className="leading-snug">
-              Администратор
+              {t('adminLabel')}
               <span className="block text-xs text-muted-foreground">
-                Управление пользователями и их доступом
+                {t('adminHint')}
               </span>
             </span>
           </label>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Отмена
+              {tc('cancel')}
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? 'Сохраняю…' : isEdit ? 'Сохранить' : 'Создать'}
+              {pending ? (isEdit ? tc('saving') : t('creating')) : isEdit ? tc('save') : t('createUser')}
             </Button>
           </DialogFooter>
         </form>
@@ -212,6 +218,9 @@ function UserFormDialog({
 
 export function UsersAdminPage() {
   const router = useRouter()
+  const t = useTranslations('admin')
+  const tc = useTranslations('common')
+  const { timeAgo } = useFormatters()
   const { data: users = [], isLoading } = useUsers()
   const { data: meData, isLoading: meLoading } = useMe()
   const me = meData?.user ?? null
@@ -240,7 +249,7 @@ export function UsersAdminPage() {
       },
       {
         onSuccess: () => {
-          toast.success(`Пользователь «${v.name}» создан`)
+          toast.success(t('userCreated', { name: v.name }))
           setCreateOpen(false)
         },
         onError: (e: Error) => toast.error(e.message),
@@ -263,7 +272,7 @@ export function UsersAdminPage() {
       },
       {
         onSuccess: () => {
-          toast.success('Пользователь обновлён')
+          toast.success(t('userUpdated'))
           setEditTarget(null)
         },
         onError: (e: Error) => toast.error(e.message),
@@ -279,7 +288,11 @@ export function UsersAdminPage() {
       {
         onSuccess: (res) => {
           const n = res.releasedTasks ?? 0
-          toast.success(`«${name}» удалён${n > 0 ? `. Снято задач с исполнителя: ${n}` : ''}`)
+          toast.success(
+            n > 0
+              ? t('deleteSuccessWithTasks', { name, count: n })
+              : t('deleteSuccess', { name })
+          )
           setDeleteTarget(null)
         },
         onError: (e: Error) => toast.error(e.message),
@@ -291,14 +304,14 @@ export function UsersAdminPage() {
   if (meLoading || !meData) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Загрузка…
+        {tc('loading')}
       </div>
     )
   }
   if (!me) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
-        Перенаправление на вход…
+        {t('redirecting')}
       </div>
     )
   }
@@ -306,13 +319,12 @@ export function UsersAdminPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted/30 px-4 text-center">
         <ShieldCheck className="h-10 w-10 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Недостаточно прав</h1>
+        <h1 className="text-lg font-semibold">{t('noAccessTitle')}</h1>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Раздел «Пользователи» доступен только администраторам. Попросите администратора,
-          если нужен доступ.
+          {t('noAccessDescription')}
         </p>
         <Button variant="outline" onClick={() => router.push('/')}>
-          <ArrowLeft className="h-4 w-4" /> К проектам
+          <ArrowLeft className="h-4 w-4" /> {t('backToProjects')}
         </Button>
       </div>
     )
@@ -328,37 +340,35 @@ export function UsersAdminPage() {
             onClick={() => router.push('/')}
             className="gap-1.5 text-muted-foreground"
           >
-            <ArrowLeft className="h-4 w-4" /> К проектам
+            <ArrowLeft className="h-4 w-4" /> {t('backToProjects')}
           </Button>
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <Users className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold leading-tight">Пользователи</h1>
-              <p className="text-xs text-muted-foreground">исполнители задач и доступ</p>
+              <h1 className="text-lg font-semibold leading-tight">{t('title')}</h1>
+              <p className="text-xs text-muted-foreground">{t('subtitle')}</p>
             </div>
           </div>
           <div className="flex-1" />
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-            <UserPlus className="h-4 w-4" /> Добавить
+            <UserPlus className="h-4 w-4" /> {t('add')}
           </Button>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
         {isLoading ? (
-          <div className="py-20 text-center text-sm text-muted-foreground">Загрузка…</div>
+          <div className="py-20 text-center text-sm text-muted-foreground">{tc('loading')}</div>
         ) : rows.length === 0 ? (
           <div className="rounded-xl border bg-background p-12 text-center">
             <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Пока нет ни одного пользователя.
-              <br />
-              Создайте первого исполнителя — он сразу появится в селекторе задач.
+            <p className="whitespace-pre-line text-sm text-muted-foreground">
+              {t('emptyDescription')}
             </p>
             <Button className="mt-4 gap-1.5" onClick={() => setCreateOpen(true)}>
-              <UserPlus className="h-4 w-4" /> Добавить пользователя
+              <UserPlus className="h-4 w-4" /> {t('addUser')}
             </Button>
           </div>
         ) : (
@@ -366,11 +376,11 @@ export function UsersAdminPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2.5 font-medium">Пользователь</th>
-                  <th className="px-4 py-2.5 font-medium">Email</th>
-                  <th className="px-4 py-2.5 font-medium">Доступ</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Задач</th>
-                  <th className="px-4 py-2.5 font-medium">Создан</th>
+                  <th className="px-4 py-2.5 font-medium">{t('colUser')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('colEmail')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('colAccess')}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{t('colTasks')}</th>
+                  <th className="px-4 py-2.5 font-medium">{t('colCreated')}</th>
                   <th className="w-10 px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -386,12 +396,12 @@ export function UsersAdminPage() {
                         <span className="font-medium">{u.name}</span>
                         {u.isAdmin && (
                           <span className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-                            <ShieldCheck className="h-3 w-3" /> админ
+                            <ShieldCheck className="h-3 w-3" /> {t('adminBadge')}
                           </span>
                         )}
                         {me.id === u.id && (
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                            это вы
+                            {t('youBadge')}
                           </span>
                         )}
                       </div>
@@ -405,11 +415,11 @@ export function UsersAdminPage() {
                     <td className="px-4 py-2.5">
                       {u.hasPassword ? (
                         <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                          пароль задан
+                          {t('passwordSet')}
                         </span>
                       ) : (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
-                          нет входа (без пароля)
+                          {t('noPassword')}
                         </span>
                       )}
                     </td>
@@ -435,7 +445,7 @@ export function UsersAdminPage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            aria-label={`Действия над пользователем ${u.name}`}
+                            aria-label={t('actionsFor', { name: u.name })}
                           >
                             <span className="text-lg leading-none">⋯</span>
                           </Button>
@@ -445,14 +455,14 @@ export function UsersAdminPage() {
                             onSelect={() => setEditTarget(u)}
                             className="gap-2"
                           >
-                            <Pencil className="h-4 w-4" /> Редактировать
+                            <Pencil className="h-4 w-4" /> {t('editUser')}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onSelect={() => setDeleteTarget(u)}
                             className="gap-2 text-destructive focus:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4" /> Удалить…
+                            <Trash2 className="h-4 w-4" /> {t('deleteEllipsis')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -465,9 +475,7 @@ export function UsersAdminPage() {
         )}
 
         <p className="mt-4 text-xs text-muted-foreground">
-          Подсказка: удаление пользователя снимает его со всех назначенных задач
-          (assigneeId = null); если за ним закреплены комментарии или история —
-          удаление будет отклонено, чтобы не потерять авторство.
+          {t('deleteHint')}
         </p>
       </main>
 
@@ -505,27 +513,29 @@ export function UsersAdminPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить пользователя?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteTarget && (
-                <>
-                  Пользователь <b>{deleteTarget.name}</b> (&lt;{deleteTarget.email}&gt;) будет удалён
-                  без возможности восстановления. Задачи, где он был назначен
-                  {(deleteTarget.assignedTasksCount ?? 0) > 0
-                    ? ` (${deleteTarget.assignedTasksCount} шт.)`
-                    : ''}
-                  , получат статус «без исполнителя».
-                </>
-              )}
+              {deleteTarget &&
+                t.rich('deleteDescription', {
+                  name: deleteTarget.name,
+                  email: deleteTarget.email,
+                  taskCount:
+                    (deleteTarget.assignedTasksCount ?? 0) > 0
+                      ? t('deleteDescriptionTaskCount', {
+                          count: deleteTarget.assignedTasksCount ?? 0,
+                        })
+                      : '',
+                  b: (chunks) => <b>{chunks}</b>,
+                })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={onDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleteMut.isPending ? 'Удаляю…' : 'Удалить'}
+              {deleteMut.isPending ? t('deleting') : tc('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

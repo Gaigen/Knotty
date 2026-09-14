@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -29,8 +30,10 @@ import { PanelTabScroll } from '@/components/tasks/panel-tab-scroll'
 import {
   copyToClipboard, useCreateTask, useDeleteTask, useTask, useTasks, useUpdateTask, useUploadAttachments,
 } from '@/lib/api'
-import { ALLOWED_CHILDREN, PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
-import { formatDate, isOverdue, toDateInputValue } from '@/lib/format'
+import { childTypesForParent, parentTypesForChild, PRIORITIES, TASK_TYPES } from '@/lib/config'
+import { isOverdue, toDateInputValue } from '@/lib/format'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import type { StatusDto, TaskFullDto, UserDto } from '@/lib/types'
 
@@ -63,6 +66,8 @@ export function TaskPanelFull({
   onSwitchMode: () => void
 }) {
   void projectKey // зарезервировано для будущего использования (логи/ссылки)
+  const t = useTranslations('taskPanel')
+  const tc = useTranslations('common')
   const { data: task, isLoading, error } = useTask(taskId)
   const update = useUpdateTask()
   const del = useDeleteTask()
@@ -143,7 +148,7 @@ export function TaskPanelFull({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: task.type,
-          title: `${task.title} (копия)`,
+          title: `${task.title} ${t('copySuffix')}`,
           description: task.description,
           statusId: task.statusId,
           assigneeId: task.assigneeId,
@@ -153,12 +158,12 @@ export function TaskPanelFull({
           parentId: task.parentId,
         }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Не удалось дублировать')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? t('duplicateFailed'))
       const created = await res.json()
       qc.invalidateQueries({ queryKey: ['tasks', task.projectId] })
       qc.invalidateQueries({ queryKey: ['projects'] })
       qc.invalidateQueries({ queryKey: ['project', task.projectId] })
-      toast.success(`Создана копия ${created.key}`)
+      toast.success(t('duplicateSuccess', { key: created.key }))
       onOpenTask(created.id)
     } catch (e) {
       toast.error((e as Error).message)
@@ -167,23 +172,23 @@ export function TaskPanelFull({
 
   async function copyKey() {
     if (!task) return
-    if (await copyToClipboard(task.key)) toast.success('Ключ скопирован')
-    else toast.error('Не удалось скопировать')
+    if (await copyToClipboard(task.key)) toast.success(t('keyCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
   async function copyLink() {
     if (!task) return
     const url = `${window.location.origin}/?project=${task.projectId}&tab=tasks&task=${taskId}`
-    if (await copyToClipboard(url)) toast.success('Ссылка скопирована')
-    else toast.error('Не удалось скопировать')
+    if (await copyToClipboard(url)) toast.success(t('linkCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
   function deleteTask() {
     if (!task) return
-    if (!confirm(`Удалить задачу ${task.key}?\n\nПодзадачи открепятся, связи, вложения и комментарии удалятся.`)) return
+    if (!confirm(t('deleteConfirm', { key: task.key }))) return
     del.mutate(
       { id: task.id, projectId: task.projectId },
-      { onSuccess: () => { toast.success('Задача удалена'); onDeleted() }, onError: (e) => toast.error(e.message) }
+      { onSuccess: () => { toast.success(t('taskDeleted')); onDeleted() }, onError: (e) => toast.error(e.message) }
     )
   }
 
@@ -191,8 +196,8 @@ export function TaskPanelFull({
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-background" data-editor-root>
         <div className="flex h-14 items-center justify-between border-b px-4">
-          <span className="text-sm text-muted-foreground">Задача не найдена</span>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><X className="h-4 w-4" /></Button>
+          <span className="text-sm text-muted-foreground">{t('notFound')}</span>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('close')}><X className="h-4 w-4" /></Button>
         </div>
       </div>
     )
@@ -201,10 +206,10 @@ export function TaskPanelFull({
   const loading = isLoading || !task
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background" data-editor-root aria-label={`Редактор задачи ${task?.key ?? ''}`} role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background" data-editor-root aria-label={t('editorAria', { key: task?.key ?? '' })} role="dialog" aria-modal="true">
       {/* Шапка редактора */}
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} aria-label="Назад к списку">
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClose} aria-label={t('backToList')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
 
@@ -227,7 +232,7 @@ export function TaskPanelFull({
               disabled={update.isPending}
               onClick={() => patch({ statusId: doneStatus.id })}
             >
-              <Check className="h-3.5 w-3.5" /> {isDone ? 'Готово ✓' : 'Готово'}
+              <Check className="h-3.5 w-3.5" /> {isDone ? t('doneCheck') : t('done')}
             </Button>
           )}
 
@@ -236,36 +241,36 @@ export function TaskPanelFull({
             size="icon"
             className="h-8 w-8"
             onClick={onSwitchMode}
-            aria-label="Компактный режим"
-            title="Компактный режим (узкая панель справа)"
+            aria-label={t('compact')}
+            title={t('compactHint')}
           >
             <Minimize2 className="h-4 w-4" />
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Действия над задачей">
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('taskActions')}>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={duplicate}>
-                <CopyPlus className="h-4 w-4" /> Дублировать
+                <CopyPlus className="h-4 w-4" /> {t('duplicate')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={copyKey}>
-                <Copy className="h-4 w-4" /> Копировать ключ
+                <Copy className="h-4 w-4" /> {t('copyKey')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={copyLink}>
-                <ExternalLink className="h-4 w-4" /> Копировать ссылку
+                <ExternalLink className="h-4 w-4" /> {t('copyLink')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={deleteTask}>
-                <Trash2 className="h-4 w-4" /> Удалить задачу…
+                <Trash2 className="h-4 w-4" /> {t('deleteTask')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Закрыть редактор">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label={t('close')}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -303,13 +308,13 @@ export function TaskPanelFull({
                     }}
                     rows={2}
                     className="w-full resize-none rounded-lg border bg-background px-3 py-2 text-2xl font-semibold leading-tight outline-none ring-ring focus:ring-2"
-                    aria-label="Редактирование названия"
+                    aria-label={t('editTitle')}
                   />
                 ) : (
                   <h1
                     className="cursor-text rounded-lg px-3 py-2 text-2xl font-semibold leading-tight hover:bg-muted/50"
                     onClick={() => setEditingTitle(true)}
-                    title="Кликните, чтобы переименовать"
+                    title={t('renameHint')}
                   >
                     {task.title}
                   </h1>
@@ -388,7 +393,7 @@ export function TaskPanelFull({
       {/* Индикатор сохранения */}
       {update.isPending && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2">
-          <Badge variant="secondary" className="animate-pulse shadow-md">Сохранение…</Badge>
+          <Badge variant="secondary" className="animate-pulse shadow-md">{t('saving')}</Badge>
         </div>
       )}
     </div>
@@ -414,6 +419,8 @@ function StatusBadgeInline({ status }: { status?: StatusDto }) {
 
 /** Описание задачи: Markdown, просмотр/редактирование, вставка картинок */
 function DescriptionBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: Record<string, unknown>) => Promise<unknown> }) {
+  const t = useTranslations('taskPanel')
+  const tc = useTranslations('common')
   const upload = useUploadAttachments()
   const [draft, setDraft] = useState(task.description)
   const [editing, setEditing] = useState(false)
@@ -464,13 +471,13 @@ function DescriptionBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: R
               setEditing(false)
             }}
           >
-            Сохранить
+            {tc('save')}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => { setDraft(task.description); setEditing(false) }}>
-            Отмена
+            {tc('cancel')}
           </Button>
           <span className="ml-2 self-center text-[11px] text-muted-foreground">
-            Markdown · Ctrl/⌘+Enter — сохранить
+            {t('markdownSaveHint')}
           </span>
         </div>
       </section>
@@ -480,12 +487,12 @@ function DescriptionBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: R
   return (
     <section className="mt-4">
       <div className="group flex items-center justify-between">
-        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Описание</h3>
+        <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('description')}</h3>
         <Button
           variant="ghost" size="sm" className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           onClick={() => setEditing(true)}
         >
-          Изменить
+          {t('edit')}
         </Button>
       </div>
       {task.description.trim() ? (
@@ -502,7 +509,7 @@ function DescriptionBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: R
           onClick={() => setEditing(true)}
           className="w-full rounded-lg border border-dashed px-4 py-6 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
         >
-          Добавьте описание задачи… <span className="text-xs">(Markdown)</span>
+          {t('addDescription')} <span className="text-xs">{t('markdownSupported')}</span>
         </button>
       )}
     </section>
@@ -518,6 +525,8 @@ function SubtasksBlock({
   onPatch: (b: Record<string, unknown>) => Promise<unknown>
   onOpenTask: (id: string) => void
 }) {
+  const t = useTranslations('taskPanel')
+  const { typeLabel } = useEnumLabels()
   const qc = useQueryClient()
   const createTask = useCreateTask()
   const updateTask = useUpdateTask()
@@ -525,7 +534,8 @@ function SubtasksBlock({
 
   const statusById = useMemo(() => new Map(statuses.map((s) => [s.id, s])), [statuses])
   const doneChildren = task.children.filter((c) => (statusById.get(c.statusId)?.category ?? 0) === 3).length
-  const defaultChildType = ALLOWED_CHILDREN[task.type]?.[0] ?? 'task'
+  const childTypes = childTypesForParent(task.type)
+  const [childType, setChildType] = useState<string>(childTypes[0] ?? 'task')
 
   function patchParentChildren(nextChildren: TaskFullDto['children']) {
     qc.setQueryData<TaskFullDto>(['task', task.id], (old) => (old ? { ...old, children: nextChildren } : old))
@@ -557,7 +567,7 @@ function SubtasksBlock({
     createTask.mutate(
       {
         projectId: task.projectId,
-        type: defaultChildType,
+        type: childType,
         title: t,
         parentId: task.id,
         assigneeId: task.assigneeId,
@@ -576,13 +586,13 @@ function SubtasksBlock({
     )
   }
 
-  if (!ALLOWED_CHILDREN[task.type]?.length) return null
+  if (!childTypes.length) return null
 
   return (
     <section className="mt-6">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <ListTree className="h-3.5 w-3.5" /> Подзадачи
+          <ListTree className="h-3.5 w-3.5" /> {t('subtasks')}
         </h3>
         {task.children.length > 0 && (
           <span className="text-xs text-muted-foreground">
@@ -608,7 +618,7 @@ function SubtasksBlock({
                     'flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                     cDone ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-muted-foreground/40 hover:border-foreground'
                   )}
-                  aria-label={cDone ? `Вернуть ${c.key} в работу` : `Отметить ${c.key} выполненной`}
+                  aria-label={cDone ? t('markUndone', { key: c.key }) : t('markDone', { key: c.key })}
                 >
                   {cDone && <Check className="h-3 w-3" />}
                 </button>
@@ -624,16 +634,31 @@ function SubtasksBlock({
       )}
 
       <div className="mt-1.5 flex items-center gap-1.5">
-        <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+        <Select value={childType} onValueChange={setChildType}>
+          <SelectTrigger className="h-8 w-[108px] shrink-0 gap-1 px-2" aria-label={t('subtaskType')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {childTypes.map((ct) => (
+              <SelectItem key={ct} value={ct}>
+                <span className="flex items-center gap-1.5">
+                  <TypeIcon type={ct} className="h-3.5 w-3.5" />
+                  {typeLabel(ct)}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); add() }
           }}
-          placeholder={`Добавить (${TYPE_LABELS_RU[defaultChildType].toLowerCase()}) — Enter`}
-          className="flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
-          aria-label="Новая подзадача"
+          placeholder={t('addSubtask', { type: typeLabel(childType).toLowerCase() })}
+          className="min-w-0 flex-1 bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground/60"
+          aria-label={t('newSubtask')}
         />
         {createTask.isPending && <span className="text-xs text-muted-foreground">…</span>}
       </div>
@@ -643,6 +668,8 @@ function SubtasksBlock({
 
 /** Метки (inline редактирование) */
 function LabelsBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: Record<string, unknown>) => Promise<unknown> }) {
+  const t = useTranslations('taskPanel')
+  const tCreate = useTranslations('tasks.create')
   const [input, setInput] = useState('')
   function add() {
     const l = input.trim()
@@ -652,7 +679,7 @@ function LabelsBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: Record
   }
   return (
     <section className="mt-6">
-      <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Метки</h3>
+      <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('labels')}</h3>
       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-background p-1.5">
         {task.labels.map((l) => (
           <LabelChip key={l} label={l} onRemove={() => onPatch({ labels: task.labels.filter((x) => x !== l) }).catch(() => {})} />
@@ -663,9 +690,9 @@ function LabelsBlock({ task, onPatch }: { task: TaskFullDto; onPatch: (b: Record
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add() }
           }}
-          placeholder={task.labels.length === 0 ? 'frontend, design…' : ''}
+          placeholder={task.labels.length === 0 ? tCreate('labelsPlaceholder') : ''}
           className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground/60"
-          aria-label="Новая метка"
+          aria-label={t('newLabel')}
         />
       </div>
     </section>
@@ -682,14 +709,14 @@ function PropertySidebar({
   onPatch: (b: Record<string, unknown>) => Promise<unknown>
   onOpenTask: (id: string) => void
 }) {
+  const t = useTranslations('taskPanel')
+  const { typeLabel, priorityLabel } = useEnumLabels()
+  const { formatDate } = useFormatters()
   const { data: allTasks = [] } = useTasks(task.projectId)
   const currentStatus = statuses.find((s) => s.id === task.statusId)
   const assignee = task.assigneeId ? users.find((u) => u.id === task.assigneeId) ?? null : null
 
-  const allowedParentTypes = useMemo(
-    () => (Object.keys(ALLOWED_CHILDREN) as string[]).filter((pt) => ALLOWED_CHILDREN[pt].includes(task.type)),
-    [task.type]
-  )
+  const allowedParentTypes = useMemo(() => parentTypesForChild(task.type), [task.type])
   const parentCandidates = useMemo(
     () => allTasks.filter((t) => t.id !== task.id && allowedParentTypes.includes(t.type)),
     [allTasks, task.id, allowedParentTypes]
@@ -697,9 +724,9 @@ function PropertySidebar({
 
   return (
     <div className="min-w-0 space-y-1">
-      <SidebarRow label="Статус">
+      <SidebarRow label={t('propertyStatus')}>
         <Select value={task.statusId} onValueChange={(v) => onPatch({ statusId: v })}>
-          <SelectTrigger className="h-8 w-full text-sm" aria-label="Сменить статус">
+          <SelectTrigger className="h-8 w-full text-sm" aria-label={t('changeStatus')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -715,9 +742,9 @@ function PropertySidebar({
         </Select>
       </SidebarRow>
 
-      <SidebarRow label="Исполнитель">
+      <SidebarRow label={t('propertyAssignee')}>
         <Select value={task.assigneeId ?? 'none'} onValueChange={(v) => onPatch({ assigneeId: v === 'none' ? null : v })}>
-          <SelectTrigger className="h-8 w-full text-sm" aria-label="Сменить исполнителя">
+          <SelectTrigger className="h-8 w-full text-sm" aria-label={t('changeAssignee')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -727,43 +754,43 @@ function PropertySidebar({
               </SelectItem>
             ))}
             <SelectItem value="none">
-              <span className="flex items-center gap-2"><UserAvatar user={null} size={18} /> Не назначен</span>
+              <span className="flex items-center gap-2"><UserAvatar user={null} size={18} /> {t('unassigned')}</span>
             </SelectItem>
           </SelectContent>
         </Select>
       </SidebarRow>
 
-      <SidebarRow label="Приоритет">
+      <SidebarRow label={t('propertyPriority')}>
         <Select value={task.priority} onValueChange={(v) => onPatch({ priority: v })}>
-          <SelectTrigger className="h-8 w-full text-sm" aria-label="Сменить приоритет">
+          <SelectTrigger className="h-8 w-full text-sm" aria-label={t('changePriority')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {PRIORITIES.map((p) => (
               <SelectItem key={p} value={p}>
-                <span className="flex items-center gap-2"><PriorityIcon priority={p} /> {PRIORITY_LABELS_RU[p]}</span>
+                <span className="flex items-center gap-2"><PriorityIcon priority={p} /> {priorityLabel(p)}</span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </SidebarRow>
 
-      <SidebarRow label="Тип">
+      <SidebarRow label={t('propertyType')}>
         <Select value={task.type} onValueChange={(v) => onPatch({ type: v })}>
-          <SelectTrigger className="h-8 w-full text-sm" aria-label="Сменить тип">
+          <SelectTrigger className="h-8 w-full text-sm" aria-label={t('changeType')}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TASK_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                <span className="flex items-center gap-2"><TypeIcon type={t} className="h-3.5 w-3.5" /> {TYPE_LABELS_RU[t]}</span>
+            {TASK_TYPES.map((taskType) => (
+              <SelectItem key={taskType} value={taskType}>
+                <span className="flex items-center gap-2"><TypeIcon type={taskType} className="h-3.5 w-3.5" /> {typeLabel(taskType)}</span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </SidebarRow>
 
-      <SidebarRow label="Срок">
+      <SidebarRow label={t('propertyDueDate')}>
         <div className="space-y-1.5">
           <div className="relative">
             <CalendarDays className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -772,14 +799,14 @@ function PropertySidebar({
               value={toDateInputValue(task.dueDate)}
               onChange={(e) => onPatch({ dueDate: e.target.value ? new Date(e.target.value + 'T12:00:00').toISOString() : null }).catch(() => {})}
               className="h-8 w-full pl-8 text-sm"
-              aria-label="Срок задачи"
+              aria-label={t('dueDateAria')}
             />
           </div>
           <div className="flex flex-wrap gap-1">
             {[
-              ['Сегодня', 0],
-              ['Завтра', 1],
-              ['+7 дней', 7],
+              [t('today'), 0],
+              [t('tomorrow'), 1],
+              [t('plus7Days'), 7],
             ].map(([label, days]) => (
               <button
                 key={label as string}
@@ -800,17 +827,17 @@ function PropertySidebar({
                 className="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
                 onClick={() => onPatch({ dueDate: null }).catch(() => {})}
               >
-                <X className="h-3 w-3" /> Очистить
+                <X className="h-3 w-3" /> {t('clear')}
               </button>
             )}
           </div>
           {task.dueDate && isOverdue(task.dueDate, currentStatus?.category ?? 0) && (
-            <p className="text-[11px] font-medium text-red-600">просрочено ({formatDate(task.dueDate)})</p>
+            <p className="text-[11px] font-medium text-red-600">{t('overdue', { date: formatDate(task.dueDate) })}</p>
           )}
         </div>
       </SidebarRow>
 
-      <SidebarRow label="Родитель">
+      <SidebarRow label={t('propertyParent')}>
         <ParentTaskPicker
           task={task}
           parentCandidates={parentCandidates}

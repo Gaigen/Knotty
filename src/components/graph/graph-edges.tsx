@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, getStraightPath, type EdgeProps } from '@xyflow/react'
 import { X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { graphEdgeStrokeStyle, type GraphEdgeKind } from '@/lib/graph-edge-theme'
 import type { GraphEdgePathStyle } from '@/lib/graph-display-prefs'
 
@@ -32,6 +33,7 @@ export function KnottyEdge({
   selected,
   style,
 }: EdgeProps) {
+  const t = useTranslations('graph.edges')
   const d = data as KnottyEdgeData
   const [hover, setHover] = useState(false)
   const pathArgs = {
@@ -79,8 +81,8 @@ export function KnottyEdge({
               e.stopPropagation()
               d.onDeleteEdge?.(id, d.kind)
             }}
-            aria-label="Удалить связь"
-            title="Удалить связь"
+            aria-label={t('delete')}
+            title={t('delete')}
           >
             <X className="h-3 w-3" />
           </button>

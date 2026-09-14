@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { hashPassword, sessionCookie, signSessionToken, validatePassword } from '@/lib/auth'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -11,7 +11,7 @@ export async function GET() {
     const withPassword = await db.user.count({ where: { passwordHash: { not: null } } })
     return Response.json({ needed: withPassword === 0 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -32,16 +32,16 @@ export async function POST(req: Request) {
     const email = (body.email ?? '').trim().toLowerCase()
     const password = body.password ?? ''
 
-    if (!name) throw new ApiError('Имя обязательно')
-    if (name.length > 80) throw new ApiError('Имя слишком длинное (макс. 80 символов)')
-    if (!EMAIL_RE.test(email)) throw new ApiError('Некорректный email')
+    if (!name) throw await apiError('nameRequired')
+    if (name.length > 80) throw await apiError('nameTooLong', { max: 80 })
+    if (!EMAIL_RE.test(email)) throw await apiError('invalidEmail')
     const pwError = validatePassword(password)
-    if (pwError) throw new ApiError(pwError)
+    if (pwError) throw await apiError(pwError)
 
     // повторная инициализация запрещена
     const withPassword = await db.user.count({ where: { passwordHash: { not: null } } })
     if (withPassword > 0) {
-      throw new ApiError('Первичная настройка уже выполнена — войдите под своим аккаунтом', 403)
+      throw await apiError('bootstrapAlreadyDone', undefined, 403)
     }
 
     const dup = await db.user.findUnique({ where: { email }, select: { id: true } })
@@ -71,6 +71,6 @@ export async function POST(req: Request) {
     res.headers.append('Set-Cookie', sessionCookie(token, isSecure(req)))
     return res
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

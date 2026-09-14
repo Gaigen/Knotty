@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { KeyRound } from 'lucide-react'
 
@@ -27,6 +28,8 @@ export function ChangePasswordDialog({
   /** false — у аккаунта ещё нет пароля (наследие сид-данных), старый вводить не нужно */
   hasPassword: boolean
 }) {
+  const t = useTranslations('auth')
+  const tc = useTranslations('common')
   const mut = useChangeMyPassword()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -44,22 +47,22 @@ export function ChangePasswordDialog({
 
   const submit = () => {
     if (hasPassword && !current) {
-      toast.error('Введите текущий пароль')
+      toast.error(t('currentPasswordRequired'))
       return
     }
     if (next.length < 6) {
-      toast.error('Новый пароль: минимум 6 символов')
+      toast.error(t('newPasswordMin'))
       return
     }
     if (next !== next2) {
-      toast.error('Новые пароли не совпадают')
+      toast.error(t('newPasswordMismatch'))
       return
     }
     mut.mutate(
       { currentPassword: current, newPassword: next },
       {
         onSuccess: () => {
-          toast.success('Пароль изменён')
+          toast.success(t('passwordChanged'))
           onOpenChange(false)
         },
         onError: (e: Error) => toast.error(e.message),
@@ -71,11 +74,9 @@ export function ChangePasswordDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Сменить пароль</DialogTitle>
+          <DialogTitle>{t('changePasswordTitle')}</DialogTitle>
           <DialogDescription>
-            {hasPassword
-              ? 'Введите текущий пароль и новый.'
-              : 'У вашего аккаунта пока нет пароля — просто задайте новый.'}
+            {hasPassword ? t('changePasswordDescHasPassword') : t('changePasswordDescNoPassword')}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -87,7 +88,7 @@ export function ChangePasswordDialog({
         >
           {hasPassword && (
             <div className="space-y-1.5">
-              <Label htmlFor="cp-current">Текущий пароль</Label>
+              <Label htmlFor="cp-current">{t('currentPassword')}</Label>
               <Input
                 id="cp-current"
                 type="password"
@@ -98,17 +99,17 @@ export function ChangePasswordDialog({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="cp-next">Новый пароль</Label>
+            <Label htmlFor="cp-next">{t('newPassword')}</Label>
             <Input
               id="cp-next"
               type="password"
               value={next}
               onChange={(e) => setNext(e.target.value)}
-              placeholder="минимум 6 символов"
+              placeholder={t('passwordMinPlaceholder')}
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="cp-next2">Повторите новый пароль</Label>
+            <Label htmlFor="cp-next2">{t('repeatNewPassword')}</Label>
             <Input
               id="cp-next2"
               type="password"
@@ -118,11 +119,11 @@ export function ChangePasswordDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Отмена
+              {tc('cancel')}
             </Button>
             <Button type="submit" className="gap-1.5" disabled={mut.isPending}>
               <KeyRound className="h-4 w-4" />
-              {mut.isPending ? 'Сохраняю…' : 'Сменить пароль'}
+              {mut.isPending ? tc('saving') : t('changePasswordSubmit')}
             </Button>
           </DialogFooter>
         </form>

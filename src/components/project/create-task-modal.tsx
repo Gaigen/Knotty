@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -16,12 +17,13 @@ import { CalendarDays, Check, ChevronsUpDown, Network, UserCircle2, X } from 'lu
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useCreateTask, useMe, useTasks, useUpdateProject } from '@/lib/api'
-import { ALLOWED_CHILDREN, PRIORITIES, PRIORITY_LABELS_RU, TASK_TYPES, TYPE_LABELS_RU } from '@/lib/config'
-import { toDateInputValue } from '@/lib/format'
+import { parentTypesForChild, PRIORITIES, TASK_TYPES } from '@/lib/config'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { cn } from '@/lib/utils'
 import { LabelChip, TypeIcon, UserAvatar } from '@/components/shared/bits'
 import { MarkdownEditor } from '@/components/shared/markdown'
-import type { ProjectDetailDto, StatusDto, TaskRowDto, UserDto } from '@/lib/types'
+import type { StatusDto, UserDto } from '@/lib/types'
 
 /** Создание задачи (ФТ-2.8) */
 export function CreateTaskModal({
@@ -36,12 +38,15 @@ export function CreateTaskModal({
   projectId: string
   statuses: StatusDto[]
   users: UserDto[]
-  /** умолчание галочки «Добавить на граф»; выбор пользователя запоминается */
   autoGraph: boolean
   open: boolean
   onOpenChange: (v: boolean) => void
   onCreated: (taskId: string) => void
 }) {
+  const t = useTranslations('tasks.create')
+  const tp = useTranslations('taskPanel')
+  const { typeLabel, priorityLabel } = useEnumLabels()
+  const { toDateInputValue } = useFormatters()
   const { data: allTasks = [] } = useTasks(projectId)
   const { data: meData } = useMe()
   const create = useCreateTask()
@@ -59,9 +64,7 @@ export function CreateTaskModal({
   const [labelInput, setLabelInput] = useState('')
   const [parentId, setParentId] = useState<string>('')
   const [parentOpen, setParentOpen] = useState(false)
-  // галочка «Добавить на граф» (ФТ-3.3): умолчание — настройка проекта, выбор запоминается
   const [addToGraph, setAddToGraph] = useState(autoGraph)
-  // сброс полей при открытии — паттерн «правка при рендере» (без эффекта)
   const [prevSession, setPrevSession] = useState('closed')
   const session = open ? 'open' : 'closed'
   if (session !== prevSession) {
@@ -71,7 +74,7 @@ export function CreateTaskModal({
       setTitle('')
       setDescription('')
       setStatusId(statuses[0]?.id ?? '')
-      setAssigneeId('me') // умолчание «назначить мне» (ФТ-2.8)
+      setAssigneeId('me')
       setPriority('mid')
       setDueDate('')
       setLabels([])
@@ -81,14 +84,16 @@ export function CreateTaskModal({
     }
   }
 
-  // [v1.1] кандидаты в родители: допустимые типы по п. 4.1.1
-  // (лимит глубины снят — дерево любой вложенности)
   const parentCandidates = useMemo(() => {
-    const allowedTypes = (Object.keys(ALLOWED_CHILDREN) as string[]).filter((pt) =>
-      ALLOWED_CHILDREN[pt].includes(type)
-    )
-    return allTasks.filter((t) => allowedTypes.includes(t.type))
+    const allowedTypes = parentTypesForChild(type)
+    return allTasks.filter((pt) => allowedTypes.includes(pt.type))
   }, [allTasks, type])
+
+  const quickDays: ReadonlyArray<[string, number]> = [
+    [tp('today'), 0],
+    [tp('tomorrow'), 1],
+    [tp('plus7Days'), 7],
+  ]
 
   function addLabel() {
     const l = labelInput.trim()
@@ -98,7 +103,7 @@ export function CreateTaskModal({
 
   function submit() {
     if (!title.trim()) {
-      toast.error('Введите название задачи')
+      toast.error(t('titleRequired'))
       return
     }
     create.mutate(
@@ -117,11 +122,10 @@ export function CreateTaskModal({
       },
       {
         onSuccess: (task) => {
-          // выбор галочки становится умолчанием для следующих задач (настройка проекта)
           if (addToGraph !== autoGraph) {
             updateProject.mutate({ id: projectId, autoGraph: addToGraph })
           }
-          toast.success(`Задача ${task.key} создана`)
+          toast.success(t('success', { key: task.key }))
           onOpenChange(false)
           onCreated(task.id)
         },
@@ -130,62 +134,61 @@ export function CreateTaskModal({
     )
   }
 
-  const parentTask = allTasks.find((t) => t.id === parentId)
+  const parentTask = allTasks.find((pt) => pt.id === parentId)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto custom-scroll sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Новая задача</DialogTitle>
-          <DialogDescription>После создания откроется панель задачи.</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-1">
-          {/* тип — сегмент-кнопки */}
           <div className="grid gap-2">
-            <Label>Тип</Label>
-            <div className="flex gap-1 rounded-lg border p-1" role="group" aria-label="Тип задачи">
-              {TASK_TYPES.map((t) => (
+            <Label>{t('type')}</Label>
+            <div className="flex gap-1 rounded-lg border p-1" role="group" aria-label={t('typeAria')}>
+              {TASK_TYPES.map((taskType) => (
                 <button
-                  key={t}
+                  key={taskType}
                   type="button"
                   onClick={() => {
-                    setType(t)
-                    setParentId('') // при смене типа родитель может стать недопустимым
+                    setType(taskType)
+                    setParentId('')
                   }}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
-                    type === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    type === taskType ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                   )}
-                  aria-pressed={type === t}
+                  aria-pressed={type === taskType}
                 >
-                  <TypeIcon type={t} className={cn('h-4 w-4', type === t && 'text-primary-foreground')} />
-                  {TYPE_LABELS_RU[t]}
+                  <TypeIcon type={taskType} className={cn('h-4 w-4', type === taskType && 'text-primary-foreground')} />
+                  {typeLabel(taskType)}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="task-title">Название *</Label>
+            <Label htmlFor="task-title">{t('titleLabel')}</Label>
             <Input
               id="task-title"
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Кратко, что нужно сделать"
+              placeholder={t('titlePlaceholder')}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && submit()}
             />
           </div>
 
           <div className="grid gap-2">
-            <Label>Описание</Label>
-            <MarkdownEditor value={description} onChange={setDescription} minHeight={110} placeholder="Markdown поддерживается…" />
+            <Label>{t('descriptionLabel')}</Label>
+            <MarkdownEditor value={description} onChange={setDescription} minHeight={110} placeholder={t('descriptionPlaceholder')} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label>Статус</Label>
+              <Label>{t('status')}</Label>
               <Select value={statusId} onValueChange={setStatusId}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -201,12 +204,12 @@ export function CreateTaskModal({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Приоритет</Label>
+              <Label>{t('priority')}</Label>
               <Select value={priority} onValueChange={setPriority}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PRIORITIES.map((p) => (
-                    <SelectItem key={p} value={p}>{PRIORITY_LABELS_RU[p]}</SelectItem>
+                    <SelectItem key={p} value={p}>{priorityLabel(p)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -214,9 +217,8 @@ export function CreateTaskModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* исполнитель */}
             <div className="grid gap-2">
-              <Label>Исполнитель</Label>
+              <Label>{t('assignee')}</Label>
               <Select value={assigneeId} onValueChange={setAssigneeId}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
@@ -224,7 +226,8 @@ export function CreateTaskModal({
                 <SelectContent>
                   <SelectItem value="me">
                     <span className="flex items-center gap-2">
-                      <UserCircle2 className="h-4 w-4 text-teal-700" /> Назначить мне{me ? ` (${me.name})` : ''}
+                      <UserCircle2 className="h-4 w-4 text-teal-700" />
+                      {t('assignToMe', { suffix: me ? ` (${me.name})` : '' })}
                     </span>
                   </SelectItem>
                   {users.map((u) => (
@@ -232,13 +235,12 @@ export function CreateTaskModal({
                       <span className="flex items-center gap-2"><UserAvatar user={u} size={18} /> {u.name}</span>
                     </SelectItem>
                   ))}
-                  <SelectItem value="none">Не назначен</SelectItem>
+                  <SelectItem value="none">{t('unassigned')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {/* срок с быстрыми значениями */}
             <div className="grid gap-2">
-              <Label htmlFor="task-due">Срок</Label>
+              <Label htmlFor="task-due">{t('dueDate')}</Label>
               <div className="flex gap-1.5">
                 <div className="relative flex-1">
                   <CalendarDays className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -252,22 +254,18 @@ export function CreateTaskModal({
                 </div>
               </div>
               <div className="flex flex-wrap gap-1">
-                {[
-                  ['Сегодня', 0],
-                  ['Завтра', 1],
-                  ['+7 дней', 7],
-                ].map(([label, days]) => (
+                {quickDays.map(([label, days]) => (
                   <button
-                    key={label as string}
+                    key={label}
                     type="button"
                     className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
                     onClick={() => {
                       const d = new Date()
-                      d.setDate(d.getDate() + (days as number))
+                      d.setDate(d.getDate() + days)
                       setDueDate(toDateInputValue(d.toISOString()))
                     }}
                   >
-                    {label as string}
+                    {label}
                   </button>
                 ))}
                 {dueDate && (
@@ -276,16 +274,15 @@ export function CreateTaskModal({
                     className="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
                     onClick={() => setDueDate('')}
                   >
-                    <X className="h-3 w-3" /> Очистить
+                    <X className="h-3 w-3" /> {tp('clear')}
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* метки */}
           <div className="grid gap-2">
-            <Label htmlFor="task-labels">Метки</Label>
+            <Label htmlFor="task-labels">{t('labels')}</Label>
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border p-1.5">
               {labels.map((l) => (
                 <LabelChip key={l} label={l} onRemove={() => setLabels(labels.filter((x) => x !== l))} />
@@ -300,15 +297,14 @@ export function CreateTaskModal({
                     addLabel()
                   }
                 }}
-                placeholder={labels.length === 0 ? 'frontend, design…' : ''}
+                placeholder={labels.length === 0 ? t('labelsPlaceholder') : ''}
                 className="min-w-[100px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none placeholder:text-muted-foreground/60"
               />
             </div>
           </div>
 
-          {/* родитель — поиск по допустимым типам ([v1.1] п. 4.1.1) */}
           <div className="grid gap-2">
-            <Label>Родитель</Label>
+            <Label>{t('parent')}</Label>
             <Popover open={parentOpen} onOpenChange={setParentOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className="h-9 w-full justify-between font-normal">
@@ -319,34 +315,34 @@ export function CreateTaskModal({
                       <span className="truncate">{parentTask.title}</span>
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">Без родителя</span>
+                    <span className="text-muted-foreground">{t('noParent')}</span>
                   )}
                   <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[420px] p-0" align="start">
                 <Command>
-                  <CommandInput placeholder="Поиск задачи-родителя…" />
+                  <CommandInput placeholder={t('parentSearch')} />
                   <CommandList>
-                    <CommandEmpty>Нет подходящих задач</CommandEmpty>
+                    <CommandEmpty>{t('noParentCandidates')}</CommandEmpty>
                     <CommandGroup>
                       <CommandItem value="no-parent" onSelect={() => { setParentId(''); setParentOpen(false) }}>
                         <Check className={cn('h-4 w-4', !parentId && 'opacity-100', parentId && 'opacity-0')} />
-                        Без родителя
+                        {t('noParent')}
                       </CommandItem>
-                      {parentCandidates.map((t) => (
+                      {parentCandidates.map((pt) => (
                         <CommandItem
-                          key={t.id}
-                          value={`${t.key} ${t.title}`}
+                          key={pt.id}
+                          value={`${pt.key} ${pt.title}`}
                           onSelect={() => {
-                            setParentId(t.id)
+                            setParentId(pt.id)
                             setParentOpen(false)
                           }}
                         >
-                          <Check className={cn('h-4 w-4', parentId === t.id ? 'opacity-100' : 'opacity-0')} />
-                          <TypeIcon type={t.type} className="h-3.5 w-3.5" />
-                          <span className="font-mono text-xs text-muted-foreground">{t.key}</span>
-                          <span className="truncate">{t.title}</span>
+                          <Check className={cn('h-4 w-4', parentId === pt.id ? 'opacity-100' : 'opacity-0')} />
+                          <TypeIcon type={pt.type} className="h-3.5 w-3.5" />
+                          <span className="font-mono text-xs text-muted-foreground">{pt.key}</span>
+                          <span className="truncate">{pt.title}</span>
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -355,30 +351,29 @@ export function CreateTaskModal({
               </PopoverContent>
             </Popover>
             <p className="text-xs text-muted-foreground">
-              Показаны только задачи, которые могут быть родителем для типа «{TYPE_LABELS_RU[type]}» (п. 4.1.1 ТЗ)
+              {t('parentHint', { type: typeLabel(type) })}
             </p>
           </div>
 
-          {/* автодобавление на граф (ФТ-3.3): выбор запоминается как умолчание */}
           <label
             className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-dashed px-3 py-2.5 text-sm"
-            title="Задача сразу появится нодой на канвасе графа"
+            title={t('addToGraphTitle')}
           >
             <Checkbox
               checked={addToGraph}
               onCheckedChange={(v) => setAddToGraph(!!v)}
-              aria-label="Добавить на граф"
+              aria-label={t('addToGraphAria')}
             />
             <Network className="h-4 w-4 text-teal-700" />
-            <span className="font-medium">Добавить на граф</span>
-            <span className="text-xs text-muted-foreground">— выбор запомнится для следующих задач</span>
+            <span className="font-medium">{t('addToGraph')}</span>
+            <span className="text-xs text-muted-foreground">{t('addToGraphHint')}</span>
           </label>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('cancel')}</Button>
           <Button onClick={submit} disabled={create.isPending || !title.trim()}>
-            {create.isPending ? 'Создаём…' : 'Создать задачу'}
+            {create.isPending ? t('submitting') : t('submit')}
           </Button>
         </DialogFooter>
       </DialogContent>

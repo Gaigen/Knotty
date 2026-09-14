@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
 import { Moon, Sun } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,7 @@ import { cn } from '@/lib/utils'
  *  До монтирования тексты нейтральны — SSR и первый клиентский рендер совпадают,
  *  иначе Next.js ловит hydration mismatch на aria-label/title. */
 export function ThemeToggle({ className }: { className?: string }) {
+  const t = useTranslations('shared')
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
 
@@ -19,8 +21,8 @@ export function ThemeToggle({ className }: { className?: string }) {
   }, [])
 
   const isDark = mounted && resolvedTheme === 'dark'
-  const label = mounted ? (isDark ? 'Включить светлую тему' : 'Включить тёмную тему') : 'Переключить тему'
-  const title = mounted ? (isDark ? 'Светлая тема' : 'Тёмная тема') : 'Тема'
+  const label = mounted ? (isDark ? t('themeLightLabel') : t('themeDarkLabel')) : t('themeToggle')
+  const title = mounted ? (isDark ? t('themeLight') : t('themeDark')) : t('themeToggle')
 
   return (
     <Button

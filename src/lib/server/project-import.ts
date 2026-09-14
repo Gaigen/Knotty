@@ -1,7 +1,8 @@
 import { db } from '@/lib/db'
 import { PROJECT_COLORS } from '@/lib/config'
 import { storeBuffer } from '@/lib/server/storage'
-import { ApiError, isValidProjectKey } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
+import { isValidProjectKey } from '@/lib/server/validation'
 import { parseProjectExportV1, type ProjectExportV1 } from '@/lib/server/project-export-schema'
 
 export type { ProjectExportV1 }
@@ -11,13 +12,13 @@ export async function importProjectFromExport(
   raw: unknown,
   opts?: { key?: string; bundleFiles?: Map<string, Buffer> }
 ): Promise<{ projectId: string; key: string; tasks: number; graphNodes: number; attachments: number }> {
-  const data = parseProjectExportV1(raw)
+  const data = await parseProjectExportV1(raw)
 
   const name = (data.project.name ?? '').trim()
-  if (!name) throw new ApiError('В файле нет названия проекта')
+  if (!name) throw await apiError('noProjectNameInFile')
 
   let key = (opts?.key ?? data.project.key ?? '').trim().toUpperCase()
-  if (!key || !isValidProjectKey(key)) throw new ApiError('Некорректный ключ проекта в файле')
+  if (!key || !isValidProjectKey(key)) throw await apiError('invalidProjectKeyInFile')
 
   const exists = await db.project.findUnique({ where: { key }, select: { id: true } })
   if (exists) {
@@ -67,7 +68,7 @@ export async function importProjectFromExport(
 
   for (const t of tasksSorted) {
     const statusId = t.status ? statusByName.get(t.status) ?? defaultStatusId : defaultStatusId
-    if (!statusId) throw new ApiError('Не удалось сопоставить статусы')
+    if (!statusId) throw await apiError('statusMappingFailed')
 
     const assigneeId = t.assigneeId && validAssigneeIds.has(t.assigneeId) ? t.assigneeId : null
 

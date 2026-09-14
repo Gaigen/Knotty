@@ -10,6 +10,7 @@ import {
 import type {
   AttachmentDto, CommentDto, GraphDto, ProjectDetailDto, ProjectSummaryDto, SessionUserDto, TaskFullDto, TaskRowDto, UserDto,
 } from '@/lib/types'
+import { clientApiMessage } from '@/lib/i18n/client-api'
 
 export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -24,7 +25,9 @@ export async function apiFetch<T>(url: string, options?: RequestInit): Promise<T
       window.location.href = '/login'
     }
     const data = await res.json().catch(() => ({}))
-    throw new Error((data as { error?: string }).error ?? `Ошибка запроса (${res.status})`)
+    throw new Error(
+      (data as { error?: string }).error ?? clientApiMessage('requestError', { status: res.status })
+    )
   }
   return res.json() as Promise<T>
 }
@@ -47,7 +50,7 @@ export async function loginRequest(email: string, password: string): Promise<Ses
     body: JSON.stringify({ email, password }),
   })
   const data = (await res.json().catch(() => ({}))) as { user?: SessionUserDto; error?: string }
-  if (!res.ok) throw new Error(data.error ?? 'Не удалось войти')
+  if (!res.ok) throw new Error(data.error ?? clientApiMessage('loginFailed'))
   return data.user as SessionUserDto
 }
 
@@ -62,7 +65,7 @@ export async function bootstrapRequest(
     body: JSON.stringify({ name, email, password }),
   })
   const data = (await res.json().catch(() => ({}))) as { user?: SessionUserDto; error?: string }
-  if (!res.ok) throw new Error(data.error ?? 'Не удалось выполнить первичную настройку')
+  if (!res.ok) throw new Error(data.error ?? clientApiMessage('bootstrapFailed'))
   return data.user as SessionUserDto
 }
 

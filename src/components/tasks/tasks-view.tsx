@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -19,8 +20,10 @@ import {
   CtxBackdrop, CtxContainer, CtxItem, CtxSeparator, CtxSubmenu, type CtxPos,
 } from '@/components/shared/context-menu-helpers'
 import { copyToClipboard, useDeleteTask, useTasks, useUpdateTask, useUsers } from '@/lib/api'
-import { PRIORITIES, PRIORITY_LABELS_RU, PRIORITY_ORDER } from '@/lib/config'
-import { formatDate, isOverdue } from '@/lib/format'
+import { PRIORITIES, PRIORITY_ORDER } from '@/lib/config'
+import { isOverdue } from '@/lib/format'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { isEditableTarget } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 import { prefGet, prefKey, prefSet } from '@/lib/prefs'
@@ -47,17 +50,6 @@ interface TaskRow {
   selected: boolean
 }
 type Row = GroupRow | TaskRow
-
-const COLUMNS: { id: string; label: string; width: string }[] = [
-  { id: 'type', label: '', width: '44px' },
-  { id: 'key', label: 'Ключ', width: '104px' },
-  { id: 'title', label: 'Название', width: 'minmax(300px, 1fr)' },
-  { id: 'status', label: 'Статус', width: '150px' },
-  { id: 'assignee', label: 'Исполнитель', width: '96px' },
-  { id: 'priority', label: 'Приоритет', width: '76px' },
-  { id: 'dueDate', label: 'Срок', width: '88px' },
-  { id: 'labels', label: 'Метки', width: '190px' },
-]
 
 function useDebounced<T>(value: T, delay = 300): T {
   const [v, setV] = useState(value)
@@ -91,6 +83,24 @@ export function TasksView({
   activeTaskId: string | null
   onCreateTask: () => void
 }) {
+  const tr = useTranslations('tasks')
+  const tc = useTranslations('common')
+  const locale = useLocale()
+  const { priorityLabel } = useEnumLabels()
+  const { formatDate } = useFormatters()
+  const columns = useMemo(
+    () => [
+      { id: 'type', label: '', width: '44px' },
+      { id: 'key', label: tr('columns.key'), width: '104px' },
+      { id: 'title', label: tr('columns.title'), width: 'minmax(300px, 1fr)' },
+      { id: 'status', label: tr('columns.status'), width: '150px' },
+      { id: 'assignee', label: tr('columns.assignee'), width: '96px' },
+      { id: 'priority', label: tr('columns.priority'), width: '76px' },
+      { id: 'dueDate', label: tr('columns.dueDate'), width: '88px' },
+      { id: 'labels', label: tr('columns.labels'), width: '190px' },
+    ],
+    [tr]
+  )
   const debouncedSearch = useDebounced(search.trim())
   const { data: tasks = [], isLoading } = useTasks(project.id, debouncedSearch || undefined)
   const qc = useQueryClient()
@@ -164,16 +174,16 @@ export function TasksView({
         case 'key':
           return (a.number - b.number) * dir
         case 'title':
-          return a.title.localeCompare(b.title, 'ru') * dir
+          return a.title.localeCompare(b.title, locale) * dir
         case 'status': {
           const oa = statusById.get(a.statusId)?.order ?? 0
           const ob = statusById.get(b.statusId)?.order ?? 0
           return (oa - ob) * dir
         }
         case 'assignee': {
-          const na = a.assigneeId ? (userById.get(a.assigneeId)?.name ?? '') : 'яя'
-          const nb = b.assigneeId ? (userById.get(b.assigneeId)?.name ?? '') : 'яя'
-          return na.localeCompare(nb, 'ru') * dir
+          const na = a.assigneeId ? (userById.get(a.assigneeId)?.name ?? '') : '\uffff'
+          const nb = b.assigneeId ? (userById.get(b.assigneeId)?.name ?? '') : '\uffff'
+          return na.localeCompare(nb, locale) * dir
         }
         case 'priority':
           return ((PRIORITY_ORDER[a.priority] ?? 0) - (PRIORITY_ORDER[b.priority] ?? 0)) * dir
@@ -207,7 +217,7 @@ export function TasksView({
     }
     emit(null)
     return out
-  }, [tasks, sort, statusById, userById])
+  }, [tasks, sort, statusById, userById, locale])
 
   // строки: группы + задачи с отступами
   const rows = useMemo<Row[]>(() => {
@@ -242,7 +252,7 @@ export function TasksView({
     } else {
       groups = [
         ...users.map((u) => ({ key: u.id, label: u.name, avatar: <UserAvatar user={u} size={18} />, order: 0 })),
-        { key: 'none', label: 'Не назначен', avatar: <UserAvatar user={null} size={18} />, order: 1 },
+        { key: 'none', label: tr('unassigned'), avatar: <UserAvatar user={null} size={18} />, order: 1 },
       ]
     }
 
@@ -269,7 +279,7 @@ export function TasksView({
       if (!collapsedGroups.has(g.key)) out.push(...body)
     }
     return out
-  }, [sortedTasks, visibility, collapsedTasks, collapsedGroups, groupMode, project.statuses, users, selectedId])
+  }, [sortedTasks, visibility, collapsedTasks, collapsedGroups, groupMode, project.statuses, users, selectedId, tr])
 
   // виртуализация (НФТ: 5000 задач)
   const virtualizer = useVirtualizer({
@@ -311,7 +321,7 @@ export function TasksView({
     if (rowIndex >= 0) virtualizer.scrollToIndex(rowIndex, { align: 'auto' })
   }
 
-  const visibleColumns = COLUMNS.filter((c) => !hiddenCols.has(c.id) || c.id === 'type' || c.id === 'title')
+  const visibleColumns = columns.filter((c) => !hiddenCols.has(c.id) || c.id === 'type' || c.id === 'title')
   const gridTemplate = visibleColumns.map((c) => c.width).join(' ')
 
   function toggleSort(field: SortField) {
@@ -339,62 +349,62 @@ export function TasksView({
   // ---- Действия над задачей из ПКМ (дублируются как кнопки/меню панели задачи) ----
   function closeCtx() { setCtxMenu(null); setCtxSubmenu(null) }
 
-  async function duplicateTask(t: TaskRowDto) {
+  async function duplicateTask(task: TaskRowDto) {
     try {
       const res = await fetch(`/api/projects/${project.id}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: t.type,
-          title: `${t.title} (копия)`,
-          statusId: t.statusId,
-          assigneeId: t.assigneeId,
-          priority: t.priority,
-          dueDate: t.dueDate,
-          labels: t.labels,
-          parentId: t.parentId,
+          type: task.type,
+          title: `${task.title} ${tr('copySuffix')}`,
+          statusId: task.statusId,
+          assigneeId: task.assigneeId,
+          priority: task.priority,
+          dueDate: task.dueDate,
+          labels: task.labels,
+          parentId: task.parentId,
         }),
       })
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Не удалось дублировать')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? tr('duplicateFailed'))
       const created = await res.json()
       qc.invalidateQueries({ queryKey: ['tasks', project.id] })
       qc.invalidateQueries({ queryKey: ['project', project.id] })
       qc.invalidateQueries({ queryKey: ['projects'] })
-      toast.success(`Создана копия ${created.key}`)
+      toast.success(tr('duplicateSuccess', { key: created.key }))
     } catch (e) {
       toast.error((e as Error).message)
     }
   }
 
-  async function copyKey(t: TaskRowDto) {
-    if (await copyToClipboard(t.key)) toast.success('Ключ скопирован')
-    else toast.error('Не удалось скопировать')
+  async function copyKey(task: TaskRowDto) {
+    if (await copyToClipboard(task.key)) toast.success(tr('keyCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
-  async function copyLink(t: TaskRowDto) {
-    const url = `${window.location.origin}/?project=${project.id}&tab=tasks&task=${t.id}`
-    if (await copyToClipboard(url)) toast.success('Ссылка скопирована')
-    else toast.error('Не удалось скопировать')
+  async function copyLink(task: TaskRowDto) {
+    const url = `${window.location.origin}/?project=${project.id}&tab=tasks&task=${task.id}`
+    if (await copyToClipboard(url)) toast.success(tr('linkCopied'))
+    else toast.error(tc('copyFailed'))
   }
 
-  function patchField(t: TaskRowDto, field: 'statusId' | 'priority' | 'assigneeId', value: string | null) {
+  function patchField(task: TaskRowDto, field: 'statusId' | 'priority' | 'assigneeId', value: string | null) {
     updateMut.mutate(
-      { id: t.id, projectId: project.id, [field]: value },
+      { id: task.id, projectId: project.id, [field]: value },
       { onError: (e) => toast.error(e.message) }
     )
   }
 
-  function markDone(t: TaskRowDto) {
+  function markDone(task: TaskRowDto) {
     const done = [...project.statuses].filter((s) => s.category === 3).sort((a, b) => b.order - a.order)[0]
-    if (done) patchField(t, 'statusId', done.id)
-    else toast.error('В проекте нет статуса с категорией «Готово»')
+    if (done) patchField(task, 'statusId', done.id)
+    else toast.error(tr('noDoneStatus'))
   }
 
-  function deleteTask(t: TaskRowDto) {
-    if (!confirm(`Удалить задачу ${t.key}?\n\nПодзадачи открепятся, связи, вложения и комментарии удалятся.`)) return
+  function deleteTask(task: TaskRowDto) {
+    if (!confirm(tr('deleteConfirm', { key: task.key }))) return
     delMut.mutate(
-      { id: t.id, projectId: project.id },
-      { onSuccess: () => toast.success('Задача удалена'), onError: (e) => toast.error(e.message) }
+      { id: task.id, projectId: project.id },
+      { onSuccess: () => toast.success(tr('taskDeleted')), onError: (e) => toast.error(e.message) }
     )
   }
 
@@ -418,12 +428,12 @@ export function TasksView({
 
       {/* тулбар вьюхи: группировка + колонки */}
       <div className="flex items-center gap-2 border-b bg-background px-4 py-1.5 sm:px-6">
-        <div className="flex items-center gap-1 rounded-lg border p-0.5" role="group" aria-label="Группировка">
+        <div className="flex items-center gap-1 rounded-lg border p-0.5" role="group" aria-label={tr('groupBy.aria')}>
           {(
             [
-              ['status', 'По статусу'],
-              ['assignee', 'По исполнителю'],
-              ['none', 'Без группировки'],
+              ['status', tr('groupBy.status')],
+              ['assignee', tr('groupBy.assignee')],
+              ['none', tr('groupBy.none')],
             ] as [GroupMode, string][]
           ).map(([mode, label]) => (
             <button
@@ -448,11 +458,11 @@ export function TasksView({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="ml-auto h-7 gap-1.5 text-xs">
-              <Columns3 className="h-3.5 w-3.5" /> Колонки
+              <Columns3 className="h-3.5 w-3.5" /> {tr('columnsButton')}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {COLUMNS.filter((c) => c.id !== 'type' && c.id !== 'title').map((c) => (
+            {columns.filter((c) => c.id !== 'type' && c.id !== 'title').map((c) => (
               <DropdownMenuCheckboxItem
                 key={c.id}
                 checked={!hiddenCols.has(c.id)}
@@ -485,11 +495,11 @@ export function TasksView({
         <div className="flex flex-1 items-center justify-center p-6">
           <EmptyState
             icon={<ListTodo className="h-10 w-10" />}
-            title="В проекте пока нет задач"
-            description="Создайте первую задачу — она появится в списке, на доске и сможет стать нодой графа."
+            title={tr('emptyTitle')}
+            description={tr('emptyDescription')}
             action={
               <Button onClick={onCreateTask} className="gap-1.5">
-                <Plus className="h-4 w-4" /> Создать задачу
+                <Plus className="h-4 w-4" /> {tr('emptyAction')}
               </Button>
             }
           />
@@ -498,11 +508,11 @@ export function TasksView({
         <div className="flex flex-1 items-center justify-center p-6">
           <EmptyState
             icon={<SearchX className="h-10 w-10" />}
-            title="Ничего не найдено"
+            title={tr('notFoundTitle')}
             description={
               searchActive
-                ? `По запросу «${debouncedSearch}» ничего не найдено. Попробуйте другой запрос или сбросьте фильтры.`
-                : 'Под текущие фильтры не подходит ни одна задача.'
+                ? tr('notFoundSearch', { query: debouncedSearch })
+                : tr('notFoundFilters')
             }
           />
         </div>
@@ -512,13 +522,13 @@ export function TasksView({
           <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
             <div className="grid min-w-[1050px] items-center px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground" style={{ gridTemplateColumns: gridTemplate }}>
               <span className="w-8" />
-              <SortHeader label="Ключ" field="key" sort={sort} onToggle={toggleSort} />
-              <SortHeader label="Название" field="title" sort={sort} onToggle={toggleSort} />
-              {!hiddenCols.has('status') && <SortHeader label="Статус" field="status" sort={sort} onToggle={toggleSort} />}
-              {!hiddenCols.has('assignee') && <SortHeader label="Исполнитель" field="assignee" sort={sort} onToggle={toggleSort} />}
-              {!hiddenCols.has('priority') && <SortHeader label="Приоритет" field="priority" sort={sort} onToggle={toggleSort} />}
-              {!hiddenCols.has('dueDate') && <SortHeader label="Срок" field="dueDate" sort={sort} onToggle={toggleSort} />}
-              {!hiddenCols.has('labels') && <span className="pl-2">Метки</span>}
+              <SortHeader label={tr('columns.key')} field="key" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.key') })} />
+              <SortHeader label={tr('columns.title')} field="title" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.title') })} />
+              {!hiddenCols.has('status') && <SortHeader label={tr('columns.status')} field="status" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.status') })} />}
+              {!hiddenCols.has('assignee') && <SortHeader label={tr('columns.assignee')} field="assignee" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.assignee') })} />}
+              {!hiddenCols.has('priority') && <SortHeader label={tr('columns.priority')} field="priority" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.priority') })} />}
+              {!hiddenCols.has('dueDate') && <SortHeader label={tr('columns.dueDate')} field="dueDate" sort={sort} onToggle={toggleSort} sortLabel={tr('sortBy', { label: tr('columns.dueDate') })} />}
+              {!hiddenCols.has('labels') && <span className="pl-2">{tr('columns.labels')}</span>}
             </div>
           </div>
 
@@ -562,7 +572,7 @@ export function TasksView({
                   key={t.id}
                   role="button"
                   tabIndex={-1}
-                  aria-label={`Задача ${t.key}: ${t.title}`}
+                  aria-label={tr('taskAria', { key: t.key, title: t.title })}
                   onClick={() => {
                     setSelectedId(t.id)
                     onOpenTask(t.id)
@@ -593,7 +603,7 @@ export function TasksView({
                           persistCollapsedTasks(next)
                         }}
                         className="mr-0.5 rounded p-0.5 hover:bg-muted"
-                        aria-label={row.expanded ? `Свернуть подзадачи ${t.key}` : `Развернуть подзадачи ${t.key}`}
+                        aria-label={row.expanded ? tr('collapseSubtasks', { key: t.key }) : tr('expandSubtasks', { key: t.key })}
                         aria-expanded={row.expanded}
                       >
                         {row.expanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -605,12 +615,12 @@ export function TasksView({
                   <span className={cn('flex min-w-0 items-center gap-1.5 pl-2 pr-3', t.type === 'epic' && 'font-medium')}>
                     <span className="truncate">{highlight(t.title)}</span>
                     {t.commentCount > 0 && (
-                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title={`${t.commentCount} комментариев`}>
+                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title={tr('commentCount', { count: t.commentCount })}>
                         <MessageSquare className="h-2.5 w-2.5" /> {t.commentCount}
                       </span>
                     )}
                     {t.attachmentCount > 0 && (
-                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title={`${t.attachmentCount} вложений`}>
+                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title={tr('attachmentCount', { count: t.attachmentCount })}>
                         <Paperclip className="h-2.5 w-2.5" /> {t.attachmentCount}
                       </span>
                     )}
@@ -651,7 +661,7 @@ export function TasksView({
           </div>
           {tasks.length > 0 && (
             <div className="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
-              <Kbd>↑</Kbd><Kbd>↓</Kbd> навигация <Kbd>Enter</Kbd> открыть <Kbd>N</Kbd> создать <Kbd>/</Kbd> поиск
+              <Kbd>↑</Kbd><Kbd>↓</Kbd> {tr('keyboardHints')} <Kbd>Enter</Kbd> {tr('keyboardOpen')} <Kbd>N</Kbd> {tr('keyboardCreate')} <Kbd>/</Kbd> {tr('keyboardSearch')}
             </div>
           )}
         </div>
@@ -664,12 +674,12 @@ export function TasksView({
           <CtxContainer pos={ctxMenu.pos} minWidth={240}>
             <CtxItem
               icon={<ArrowRight className="h-3.5 w-3.5" />}
-              label="Открыть"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); onOpenTask(t.id) }}
+              label={tr('context.open')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); onOpenTask(task.id) }}
             />
             <CtxItem
               icon={<ExternalLink className="h-3.5 w-3.5" />}
-              label="Открыть в новой вкладке"
+              label={tr('context.openNewTab')}
               onClick={() => {
                 const t = ctxMenu.task
                 window.open(`/?project=${project.id}&tab=tasks&task=${t.id}`, '_blank', 'noopener')
@@ -678,33 +688,33 @@ export function TasksView({
             />
             <CtxItem
               icon={<CopyPlus className="h-3.5 w-3.5" />}
-              label="Дублировать"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); duplicateTask(t) }}
+              label={tr('context.duplicate')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); duplicateTask(task) }}
             />
             <CtxSeparator />
             <CtxItem
               icon={<Copy className="h-3.5 w-3.5" />}
-              label="Копировать ключ"
-              onClick={() => { const t = ctxMenu.task; copyKey(t); closeCtx() }}
+              label={tr('context.copyKey')}
+              onClick={() => { const task = ctxMenu.task; copyKey(task); closeCtx() }}
             />
             <CtxItem
               icon={<Copy className="h-3.5 w-3.5" />}
-              label="Копировать ссылку"
-              onClick={() => { const t = ctxMenu.task; copyLink(t); closeCtx() }}
+              label={tr('context.copyLink')}
+              onClick={() => { const task = ctxMenu.task; copyLink(task); closeCtx() }}
             />
             <CtxSeparator />
             <CtxSubmenu
               open={ctxSubmenu === 'status'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'status' ? null : 'status')}
               icon={<GitBranch className="h-3.5 w-3.5" />}
-              label="Статус"
+              label={tr('context.status')}
             >
               {project.statuses.map((s) => (
                 <CtxItem
                   key={s.id}
                   dot={s.color}
                   label={s.name}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'statusId', s.id); closeCtx() }}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'statusId', s.id); closeCtx() }}
                 />
               ))}
             </CtxSubmenu>
@@ -712,13 +722,13 @@ export function TasksView({
               open={ctxSubmenu === 'priority'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'priority' ? null : 'priority')}
               icon={<Flame className="h-3.5 w-3.5" />}
-              label="Приоритет"
+              label={tr('context.priority')}
             >
               {PRIORITIES.map((p) => (
                 <CtxItem
                   key={p}
-                  label={PRIORITY_LABELS_RU[p]}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'priority', p); closeCtx() }}
+                  label={priorityLabel(p)}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'priority', p); closeCtx() }}
                 />
               ))}
             </CtxSubmenu>
@@ -726,34 +736,34 @@ export function TasksView({
               open={ctxSubmenu === 'assignee'}
               onToggle={() => setCtxSubmenu(ctxSubmenu === 'assignee' ? null : 'assignee')}
               icon={<UserCircle2 className="h-3.5 w-3.5" />}
-              label="Исполнитель"
+              label={tr('context.assignee')}
             >
               {users.map((u) => (
                 <CtxItem
                   key={u.id}
                   avatar={<UserAvatar user={u} size={16} />}
                   label={u.name}
-                  onClick={() => { const t = ctxMenu.task; patchField(t, 'assigneeId', u.id); closeCtx() }}
+                  onClick={() => { const task = ctxMenu.task; patchField(task, 'assigneeId', u.id); closeCtx() }}
                 />
               ))}
               <CtxSeparator />
               <CtxItem
-                label="Не назначен"
-                onClick={() => { const t = ctxMenu.task; patchField(t, 'assigneeId', null); closeCtx() }}
+                label={tr('unassigned')}
+                onClick={() => { const task = ctxMenu.task; patchField(task, 'assigneeId', null); closeCtx() }}
               />
             </CtxSubmenu>
             <CtxSeparator />
             <CtxItem
               icon={<Check className="h-3.5 w-3.5 text-emerald-600" />}
-              label="Готово"
-              onClick={() => { const t = ctxMenu.task; closeCtx(); markDone(t) }}
+              label={tr('context.done')}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); markDone(task) }}
             />
             <CtxSeparator />
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить…"
+              label={tr('context.delete')}
               danger
-              onClick={() => { const t = ctxMenu.task; closeCtx(); deleteTask(t) }}
+              onClick={() => { const task = ctxMenu.task; closeCtx(); deleteTask(task) }}
             />
           </CtxContainer>
         </>
@@ -767,11 +777,13 @@ function SortHeader({
   field,
   sort,
   onToggle,
+  sortLabel,
 }: {
   label: string
   field: SortField
   sort: { field: SortField; dir: 'asc' | 'desc' } | null
   onToggle: (f: SortField) => void
+  sortLabel: string
 }) {
   const active = sort?.field === field
   return (
@@ -782,7 +794,7 @@ function SortHeader({
         'flex items-center gap-1 truncate px-2 py-2 text-left transition-colors hover:text-foreground',
         active && 'text-foreground'
       )}
-      aria-label={`Сортировать по: ${label}`}
+      aria-label={sortLabel}
     >
       {label}
       {active && <ChevronDown className={cn('h-3 w-3', sort!.dir === 'asc' && 'rotate-180')} />}

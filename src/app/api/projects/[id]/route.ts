@@ -2,7 +2,7 @@ import { db } from '@/lib/db'
 import type { ProjectDetailDto } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -11,7 +11,7 @@ async function buildDetail(projectId: string, userId: string): Promise<ProjectDe
     where: { id: projectId },
     include: { statuses: { orderBy: { order: 'asc' } } },
   })
-  if (!project) throw new ApiError('Проект не найден', 404)
+  if (!project) await apiError('projectNotFound', undefined, 404)
   const [fav, taskGroups] = await Promise.all([
     db.favorite.findUnique({ where: { userId_projectId: { userId, projectId } } }),
     db.task.groupBy({ by: ['statusId'], where: { projectId }, _count: { _all: true } }),
@@ -55,7 +55,7 @@ export async function GET(_req: Request, { params }: Params) {
     const user = await getCurrentUser()
     return Response.json(await buildDetail(id, user.id))
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -73,12 +73,12 @@ export async function PATCH(req: Request, { params }: Params) {
     const user = await getCurrentUser()
     const body = await readJson<PatchBody>(req)
     const project = await db.project.findUnique({ where: { id }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const data: Record<string, unknown> = {}
     if (typeof body.name === 'string') {
       const name = body.name.trim()
-      if (!name) throw new ApiError('Название проекта не может быть пустым')
+      if (!name) await apiError('projectNameEmpty')
       data.name = name
     }
     if (typeof body.description === 'string') data.description = body.description.trim()
@@ -101,7 +101,7 @@ export async function PATCH(req: Request, { params }: Params) {
     publishProjectChange(id)
     return Response.json(await buildDetail(id, user.id))
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -111,9 +111,9 @@ export async function DELETE(req: Request, { params }: Params) {
     const { id } = await params
     const body = await readJson<{ key?: string }>(req)
     const project = await db.project.findUnique({ where: { id }, select: { key: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
     if ((body.key ?? '').trim().toUpperCase() !== project.key) {
-      throw new ApiError('Для удаления проекта введите его ключ в точности как указано')
+      await apiError('deleteProjectKeyMismatch')
     }
     // вложения — физические файлы
     const attachments = await db.attachment.findMany({ where: { projectId: id }, select: { storageKey: true, previewKey: true } })
@@ -125,6 +125,6 @@ export async function DELETE(req: Request, { params }: Params) {
     }
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

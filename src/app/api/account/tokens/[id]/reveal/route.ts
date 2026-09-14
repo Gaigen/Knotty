@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { decryptApiTokenPlain } from '@/lib/api-token-crypto'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -14,16 +14,13 @@ export async function GET(_req: Request, { params }: Params) {
       where: { id, userId: user.id },
       select: { id: true, name: true, tokenEnc: true },
     })
-    if (!row) throw new ApiError('Токен не найден', 404)
+    if (!row) await apiError('tokenNotFound', undefined, 404)
     if (!row.tokenEnc) {
-      throw new ApiError(
-        'Этот токен создан до обновления и не сохранён для показа. Создайте новый токен.',
-        404
-      )
+      await apiError('tokenCannotReveal', undefined, 404)
     }
     const token = decryptApiTokenPlain(row.tokenEnc)
     return Response.json({ id: row.id, name: row.name, token })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

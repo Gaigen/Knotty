@@ -1,21 +1,15 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 
 export type TaskPanelTabId = 'details' | 'comments' | 'attachments' | 'links' | 'history'
 
-const TAB_LABELS: Record<TaskPanelTabId, string> = {
-  details: 'Детали',
-  comments: 'Комментарии',
-  attachments: 'Вложения',
-  links: 'Связи',
-  history: 'История',
-}
-
 export function TaskPanelTabLabel({ id, count }: { id: TaskPanelTabId; count?: number }) {
+  const t = useTranslations('taskPanel.tabs')
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span>{TAB_LABELS[id]}</span>
+      <span>{t(id)}</span>
       {!!count && (
         <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-foreground/10 px-1 text-[9px] font-semibold leading-none tabular-nums">
           {count}

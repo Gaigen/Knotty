@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { DEFAULT_GROUP_SIZE, toAbsolute, wrapSelection } from '@/lib/graph-grouping'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 const TITLE_MAX = 200
 
@@ -35,13 +35,13 @@ function worldXY(
 
 export async function wrapNodesInGroup(projectId: string, nodeIds: string[], title = 'Пачка') {
   const unique = [...new Set(nodeIds)]
-  if (unique.length === 0) throw new ApiError('Нет нод для группировки')
+  if (unique.length === 0) throw await apiError('noNodesToGroup')
 
   const all = await db.graphNode.findMany({ where: { projectId } })
   const byId = new Map(all.map((n) => [n.id, n]))
   const picked = unique.map((id) => byId.get(id)).filter((n): n is NonNullable<typeof n> => !!n)
-  if (picked.length === 0) throw new ApiError('Нет нод для группировки')
-  if (picked.some((n) => n.refType === 'group')) throw new ApiError('Рамки нельзя вкладывать друг в друга')
+  if (picked.length === 0) throw await apiError('noNodesToGroup')
+  if (picked.some((n) => n.refType === 'group')) throw await apiError('groupsCannotNest')
 
   const boxes = picked.map((n) => {
     const w = n.w && n.w > 0 ? n.w : 220
@@ -78,8 +78,8 @@ export async function wrapNodesInGroup(projectId: string, nodeIds: string[], tit
 
 export async function ungroupNode(groupId: string, projectId: string) {
   const group = await db.graphNode.findFirst({ where: { id: groupId, projectId } })
-  if (!group) throw new ApiError('Рамка не найдена', 404)
-  if (group.refType !== 'group') throw new ApiError('Это не рамка')
+  if (!group) throw await apiError('groupNotFound', undefined, 404)
+  if (group.refType !== 'group') throw await apiError('notAGroup')
 
   const children = await db.graphNode.findMany({ where: { parentId: group.id } })
   await db.$transaction([
@@ -98,10 +98,10 @@ export async function ungroupNode(groupId: string, projectId: string) {
 
 export async function assertParentGroup(projectId: string, nodeId: string, parentId: string | null) {
   if (parentId == null) return
-  if (parentId === nodeId) throw new ApiError('Нельзя вложить ноду в себя')
+  if (parentId === nodeId) throw await apiError('cannotNestNodeInSelf')
   const parent = await db.graphNode.findFirst({ where: { id: parentId, projectId } })
-  if (!parent) throw new ApiError('Рамка не найдена', 404)
-  if (parent.refType !== 'group') throw new ApiError('Родителем может быть только рамка')
+  if (!parent) throw await apiError('groupNotFound', undefined, 404)
+  if (parent.refType !== 'group') throw await apiError('parentMustBeGroup')
   const node = await db.graphNode.findFirst({ where: { id: nodeId, projectId }, select: { refType: true } })
-  if (node?.refType === 'group') throw new ApiError('Рамки нельзя вкладывать друг в друга')
+  if (node?.refType === 'group') throw await apiError('groupsCannotNest')
 }

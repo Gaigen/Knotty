@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { storeFile } from '@/lib/server/storage'
 import type { AttachmentDto } from '@/lib/types'
 
@@ -14,12 +14,12 @@ export async function POST(req: Request, { params }: Params) {
     const user = await getCurrentUser()
 
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const form = await req.formData().catch(() => null)
-    if (!form) throw new ApiError('Ожидается multipart/form-data')
+    if (!form) await apiError('multipartExpected')
     const files = form.getAll('files').filter((f): f is File => f instanceof File)
-    if (files.length === 0) throw new ApiError('Файлы не переданы')
+    if (files.length === 0) await apiError('filesNotProvided')
 
     const created: AttachmentDto[] = []
     for (const file of files) {
@@ -49,6 +49,6 @@ export async function POST(req: Request, { params }: Params) {
     publishProjectChange(projectId)
     return Response.json(created, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

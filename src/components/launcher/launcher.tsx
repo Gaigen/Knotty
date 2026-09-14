@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useLocale, useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   ArrowRight, FolderKanban, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Boxes, Copy, ExternalLink, Users,
 } from 'lucide-react'
-import { APP_NAME, APP_TAGLINE } from '@/lib/branding'
+import { APP_NAME } from '@/lib/branding'
+import { Link, useRouter } from '@/i18n/navigation'
+import { useFormatters } from '@/lib/i18n/use-formatters'
 import { KnottyMark } from '@/components/shared/knotty-mark'
 import { prefGet, prefKey } from '@/lib/prefs'
 import { Button } from '@/components/ui/button'
@@ -17,7 +18,6 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useProjects, useUpdateProject, useMe } from '@/lib/api'
-import { timeAgo } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { projectUrl, getLastProjectId } from '@/lib/nav'
 import type { ProjectSummaryDto } from '@/lib/types'
@@ -36,6 +36,11 @@ type SortMode = 'recent' | 'name' | 'count'
 
 export function Launcher() {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations('launcher')
+  const tb = useTranslations('branding')
+  const tc = useTranslations('common')
+  const { timeAgo } = useFormatters()
   const { data: projects = [], isLoading } = useProjects()
   const favMut = useUpdateProject()
   const { data: meData } = useMe()
@@ -71,7 +76,7 @@ export function Launcher() {
       )
     }
     const sorted = [...list]
-    if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+    if (sort === 'name') sorted.sort((a, b) => a.name.localeCompare(b.name, locale))
     else if (sort === 'count') sorted.sort((a, b) => b.counts.total - a.counts.total)
     else sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     // избранное — всегда сверху (ФТ-1.4/1.5)
@@ -97,8 +102,8 @@ export function Launcher() {
   }
 
   async function copyProjectKey(p: ProjectSummaryDto) {
-    if (await copyToClipboard(p.key)) toast.success('Ключ скопирован')
-    else toast.error('Не удалось скопировать')
+    if (await copyToClipboard(p.key)) toast.success(t('keyCopied'))
+    else toast.error(t('copyFailed'))
   }
 
   return (
@@ -111,12 +116,12 @@ export function Launcher() {
             </div>
             <div>
               <h1 className="text-lg font-semibold leading-tight">{APP_NAME}</h1>
-              <p className="text-xs text-muted-foreground">{APP_TAGLINE}</p>
+              <p className="text-xs text-muted-foreground">{tb('tagline')}</p>
             </div>
           </div>
           <div className="flex h-9 items-center gap-2">
             {me?.isAdmin && (
-              <Button variant="ghost" size="icon" asChild aria-label="Пользователи" title="Пользователи">
+              <Button variant="ghost" size="icon" asChild aria-label={t('users')} title={t('users')}>
                 <Link href="/admin/users">
                   <Users className="h-4 w-4" />
                 </Link>
@@ -125,7 +130,7 @@ export function Launcher() {
             <ThemeToggle />
             <ImportProjectButton onImported={(id) => router.push(projectUrl(id))} />
             <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-              <Plus className="h-4 w-4" /> Проект
+              <Plus className="h-4 w-4" /> {tc('project')}
             </Button>
             {me && <AccountMenu user={me} />}
           </div>
@@ -135,8 +140,8 @@ export function Launcher() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         {/* ФТ-1.2 — «Продолжить работу» */}
         {lastProject && !search && (
-          <section className="mb-8" aria-label="Продолжить работу">
-            <h2 className="mb-2 text-sm font-medium text-muted-foreground">Продолжить работу</h2>
+          <section className="mb-8" aria-label={t('continueWork')}>
+            <h2 className="mb-2 text-sm font-medium text-muted-foreground">{t('continueWork')}</h2>
             <button
               type="button"
               onClick={() => openProject(lastProject)}
@@ -149,11 +154,11 @@ export function Launcher() {
                   <Badge variant="secondary" className="font-mono text-[11px]">{lastProject.key}</Badge>
                 </div>
                 <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{lastProject.counts.total} задач</span>
+                  <span>{lastProject.counts.total} {tc('tasks')}</span>
                   <span aria-hidden>·</span>
-                  <span>{lastProject.counts.inProgress} в работе</span>
+                  <span>{lastProject.counts.inProgress} {tc('inProgress')}</span>
                   <span aria-hidden>·</span>
-                  <span>обновлён {timeAgo(lastProject.updatedAt)}</span>
+                  <span>{tc('updated', { time: timeAgo(lastProject.updatedAt) })}</span>
                 </div>
                 {/* мини-прогрессбар по категориям статусов */}
                 <div className="mt-2.5 flex h-1.5 w-full max-w-md overflow-hidden rounded-full bg-muted">
@@ -162,14 +167,14 @@ export function Launcher() {
                       <div
                         className="h-full bg-emerald-500"
                         style={{ width: `${(lastProject.counts.done / lastProject.counts.total) * 100}%` }}
-                        title={`Готово: ${lastProject.counts.done}`}
+                        title={tc('done', { count: lastProject.counts.done })}
                       />
                       <div
                         className="h-full bg-amber-500"
                         style={{ width: `${(lastProject.counts.inProgress / lastProject.counts.total) * 100}%` }}
-                        title={`В работе: ${lastProject.counts.inProgress}`}
+                        title={`${lastProject.counts.inProgress} ${tc('inProgress')}`}
                       />
-                      <div className="h-full bg-muted-foreground/25" style={{ width: '100%' }} title={`Осталось: ${lastProject.counts.total - lastProject.counts.done - lastProject.counts.inProgress}`} />
+                      <div className="h-full bg-muted-foreground/25" style={{ width: '100%' }} title={tc('remaining', { count: lastProject.counts.total - lastProject.counts.done - lastProject.counts.inProgress })} />
                     </>
                   )}
                 </div>
@@ -180,24 +185,24 @@ export function Launcher() {
         )}
 
         {/* ФТ-1.3 поиск + ФТ-1.4 сортировка */}
-        <section aria-label="Проекты">
+        <section aria-label={t('projects')}>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Поиск по названию, ключу, описанию…"
+                placeholder={t('searchPlaceholder')}
                 className="pl-9"
-                aria-label="Поиск проектов"
+                aria-label={t('searchAria')}
               />
             </div>
-            <div className="flex h-9 shrink-0 items-stretch gap-0.5 rounded-lg border bg-background p-1" role="group" aria-label="Сортировка">
+            <div className="flex h-9 shrink-0 items-stretch gap-0.5 rounded-lg border bg-background p-1" role="group" aria-label={t('sortAria')}>
               {(
                 [
-                  ['recent', 'Недавние'],
-                  ['name', 'По названию'],
-                  ['count', 'По числу задач'],
+                  ['recent', t('sortRecent')],
+                  ['name', t('sortName')],
+                  ['count', t('sortCount')],
                 ] as [SortMode, string][]
               ).map(([mode, label]) => (
                 <button
@@ -227,19 +232,19 @@ export function Launcher() {
             // ФТ-1.8 пустой список
             <EmptyState
               icon={<FolderKanban className="h-10 w-10" />}
-              title="Пока нет ни одного проекта"
-              description="Создайте первый проект — задачи, канбан и граф связей появятся внутри."
+              title={t('emptyTitle')}
+              description={t('emptyDescription')}
               action={
                 <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-                  <Plus className="h-4 w-4" /> Создать первый проект
+                  <Plus className="h-4 w-4" /> {t('emptyAction')}
                 </Button>
               }
             />
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={<Search className="h-10 w-10" />}
-              title="Ничего не найдено"
-              description={`По запросу «${search}» проектов нет. Попробуйте изменить формулировку.`}
+              title={t('notFoundTitle')}
+              description={t('notFoundDescription', { query: search })}
             />
           ) : (
             <div className="space-y-2">
@@ -247,6 +252,7 @@ export function Launcher() {
                 <ProjectRow
                   key={p.id}
                   project={p}
+                  timeAgo={timeAgo}
                   onOpen={() => openProject(p)}
                   onEdit={() => setEditTarget(p)}
                   onContextMenu={(e) => {
@@ -271,7 +277,7 @@ export function Launcher() {
         project={deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onDeleted={() => {
-          toast.success(`Проект «${deleteTarget?.name}» удалён`)
+          toast.success(t('projectDeleted', { name: deleteTarget?.name ?? '' }))
           setDeleteTarget(null)
         }}
       />
@@ -282,28 +288,28 @@ export function Launcher() {
           <CtxContainer pos={ctxMenu.pos} minWidth={240}>
             <CtxItem
               icon={<ArrowRight className="h-3.5 w-3.5" />}
-              label="Открыть"
+              label={t('open')}
               onClick={() => { const p = ctxMenu.project; setCtxMenu(null); openProject(p) }}
             />
             <CtxItem
               icon={<ExternalLink className="h-3.5 w-3.5" />}
-              label="Открыть в новой вкладке"
+              label={t('openNewTab')}
               onClick={() => { const p = ctxMenu.project; setCtxMenu(null); openProjectNewTab(p) }}
             />
             <CtxItem
               icon={<Pencil className="h-3.5 w-3.5" />}
-              label="Редактировать…"
+              label={t('editProject')}
               onClick={() => { const p = ctxMenu.project; setCtxMenu(null); setEditTarget(p) }}
             />
             <CtxSeparator />
             <CtxItem
               icon={<Copy className="h-3.5 w-3.5" />}
-              label="Копировать ключ"
+              label={t('copyKey')}
               onClick={() => { const p = ctxMenu.project; copyProjectKey(p); setCtxMenu(null) }}
             />
             <CtxItem
               icon={<Star className={cn('h-3.5 w-3.5', ctxMenu.project.isFavorite && 'fill-amber-400 text-amber-400')} />}
-              label={ctxMenu.project.isFavorite ? 'Убрать из избранного' : 'В избранное'}
+              label={ctxMenu.project.isFavorite ? t('removeFavorite') : t('addFavorite')}
               onClick={() => {
                 const p = ctxMenu.project
                 favMut.mutate({ id: p.id, isFavorite: !p.isFavorite })
@@ -313,7 +319,7 @@ export function Launcher() {
             <CtxSeparator />
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить проект…"
+              label={t('deleteProject')}
               danger
               onClick={() => { const p = ctxMenu.project; setCtxMenu(null); setDeleteTarget(p) }}
             />
@@ -326,17 +332,21 @@ export function Launcher() {
 
 function ProjectRow({
   project,
+  timeAgo,
   onOpen,
   onEdit,
   onDelete,
   onContextMenu,
 }: {
   project: ProjectSummaryDto
+  timeAgo: (iso: string | null | undefined) => string
   onOpen: () => void
   onEdit: () => void
   onDelete: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }) {
+  const t = useTranslations('launcher')
+  const tc = useTranslations('common')
   const fav = useUpdateProject()
 
   function toggleFavorite(e: React.MouseEvent) {
@@ -352,7 +362,7 @@ function ProjectRow({
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === 'Enter' && onOpen()}
-      aria-label={`Открыть проект ${project.name}`}
+      aria-label={t('openProjectAria', { name: project.name })}
     >
       <span className="h-10 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: project.color }} />
       <div className="min-w-0 flex-1">
@@ -367,11 +377,11 @@ function ProjectRow({
       </div>
       <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
         <div className="flex items-center justify-end gap-3">
-          <span>{project.counts.total} задач</span>
+          <span>{project.counts.total} {tc('tasks')}</span>
           <span aria-hidden>·</span>
-          <span>{project.counts.inProgress} в работе</span>
+          <span>{project.counts.inProgress} {tc('inProgress')}</span>
         </div>
-        <div className="mt-0.5">обновлён {timeAgo(project.updatedAt)}</div>
+        <div className="mt-0.5">{tc('updated', { time: timeAgo(project.updatedAt) })}</div>
       </div>
       {/* ФТ-1.5 — звёздочка избранного на строке */}
       <button
@@ -383,7 +393,7 @@ function ProjectRow({
             ? 'text-amber-400 opacity-100'
             : 'text-muted-foreground/50 opacity-0 hover:text-amber-400 group-hover:opacity-100 focus-visible:opacity-100'
         )}
-        aria-label={project.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'}
+        aria-label={project.isFavorite ? t('removeFavoriteAria') : t('addFavoriteAria')}
         aria-pressed={project.isFavorite}
       >
         <Star className={cn('h-4 w-4', project.isFavorite && 'fill-amber-400')} />
@@ -392,15 +402,15 @@ function ProjectRow({
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
           <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">
             <MoreHorizontal className="h-4 w-4" />
-            <span className="sr-only">Меню проекта</span>
+            <span className="sr-only">{t('projectMenu')}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
           <DropdownMenuItem onClick={onEdit}>
-            <Pencil className="h-4 w-4" /> Редактировать
+            <Pencil className="h-4 w-4" /> {tc('edit')}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
-            <Trash2 className="h-4 w-4" /> Удалить…
+            <Trash2 className="h-4 w-4" /> {t('delete')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

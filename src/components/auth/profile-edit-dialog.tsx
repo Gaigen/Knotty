@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -22,6 +23,8 @@ export function ProfileEditDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
 }) {
+  const t = useTranslations('auth')
+  const tc = useTranslations('common')
   const update = useUpdateMyProfile()
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState(user.email)
@@ -39,15 +42,15 @@ export function ProfileEditDialog({
     const trimmedName = name.trim()
     const trimmedEmail = email.trim().toLowerCase()
     if (!trimmedName) {
-      toast.error('Имя обязательно')
+      toast.error(t('nameRequired'))
       return
     }
     if (!EMAIL_RE.test(trimmedEmail)) {
-      toast.error('Некорректный email')
+      toast.error(t('invalidEmail'))
       return
     }
     if (avatarUrl.trim() && !/^https?:\/\//i.test(avatarUrl.trim())) {
-      toast.error('Аватар: URL должен начинаться с http:// или https://')
+      toast.error(t('avatarUrlInvalid'))
       return
     }
     update.mutate(
@@ -58,7 +61,7 @@ export function ProfileEditDialog({
       },
       {
         onSuccess: () => {
-          toast.success('Профиль обновлён')
+          toast.success(t('profileUpdated'))
           onOpenChange(false)
         },
         onError: (e) => toast.error(e.message),
@@ -70,8 +73,8 @@ export function ProfileEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Редактировать профиль</DialogTitle>
-          <DialogDescription>Имя, email и аватар видны другим участникам проекта.</DialogDescription>
+          <DialogTitle>{t('profileEditTitle')}</DialogTitle>
+          <DialogDescription>{t('profileEditDesc')}</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-3"
@@ -81,15 +84,15 @@ export function ProfileEditDialog({
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="profile-name">Имя</Label>
+            <Label htmlFor="profile-name">{t('name')}</Label>
             <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="profile-email">Email</Label>
+            <Label htmlFor="profile-email">{t('email')}</Label>
             <Input id="profile-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="profile-avatar">URL аватара (необязательно)</Label>
+            <Label htmlFor="profile-avatar">{t('avatarLabelOptional')}</Label>
             <Input
               id="profile-avatar"
               value={avatarUrl}
@@ -98,9 +101,9 @@ export function ProfileEditDialog({
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Отмена</Button>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{tc('cancel')}</Button>
             <Button type="submit" disabled={update.isPending}>
-              {update.isPending ? 'Сохраняю…' : 'Сохранить'}
+              {update.isPending ? tc('saving') : tc('save')}
             </Button>
           </DialogFooter>
         </form>

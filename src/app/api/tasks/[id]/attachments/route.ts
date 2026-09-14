@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { MAX_TASK_TOTAL_MB } from '@/lib/config'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { storeFile } from '@/lib/server/storage'
@@ -16,19 +16,19 @@ export async function POST(req: Request, { params }: Params) {
     const user = await getCurrentUser()
 
     const task = await db.task.findUnique({ where: { id }, select: { id: true, projectId: true } })
-    if (!task) throw new ApiError('Задача не найдена', 404)
+    if (!task) await apiError('taskNotFound', undefined, 404)
 
     const form = await req.formData().catch(() => null)
-    if (!form) throw new ApiError('Ожидается multipart/form-data')
+    if (!form) await apiError('multipartExpected')
     const files = form.getAll('files').filter((f): f is File => f instanceof File)
-    if (files.length === 0) throw new ApiError('Файлы не переданы')
+    if (files.length === 0) await apiError('filesNotProvided')
 
     // лимит на суммарный объём задачи
     const agg = await db.attachment.aggregate({ where: { taskId: id }, _sum: { size: true } })
     const currentTotal = agg._sum.size ?? 0
     const incomingTotal = files.reduce((s, f) => s + f.size, 0)
     if (currentTotal + incomingTotal > MAX_TASK_TOTAL_MB * 1024 * 1024) {
-      throw new ApiError(`Суммарный объём вложений задачи не может превышать ${MAX_TASK_TOTAL_MB} МБ`)
+      await apiError('attachmentsTotalTooLarge', { max: MAX_TASK_TOTAL_MB })
     }
 
     const created: AttachmentDto[] = []
@@ -60,6 +60,6 @@ export async function POST(req: Request, { params }: Params) {
     publishProjectChange(task.projectId, { taskId: id, scope: 'task' })
     return Response.json(created, { status: 201 })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

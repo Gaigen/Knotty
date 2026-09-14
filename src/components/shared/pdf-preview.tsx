@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   getDocument,
@@ -39,7 +40,8 @@ function paintPage(
   canvas: HTMLCanvasElement,
   containerWidth: number,
   mode: 'thumbnail' | 'viewer',
-  zoom: number
+  zoom: number,
+  canvasErrorMsg: string
 ): RenderTask {
   const base = page.getViewport({ scale: 1 })
   const fitScale =
@@ -63,7 +65,7 @@ function paintPage(
   canvas.height = Math.floor(viewport.height * pixelRatio)
 
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas 2D недоступен')
+  if (!ctx) throw new Error(canvasErrorMsg)
 
   const transform =
     pixelRatio !== 1
@@ -85,6 +87,7 @@ export function PdfPreview({
   mode = 'viewer',
   darkCanvas = false,
 }: PdfPreviewProps) {
+  const t = useTranslations('shared')
   const scrollRef = useRef<HTMLDivElement>(null)
   const pagesRef = useRef<HTMLDivElement>(null)
 
@@ -123,7 +126,7 @@ export function PdfPreview({
         setState('ok')
       } catch (e) {
         if (!cancelled) {
-          setError((e as Error).message || 'Не удалось открыть PDF')
+          setError((e as Error).message || t('pdfOpenError'))
           setState('error')
         }
       }
@@ -186,7 +189,7 @@ export function PdfPreview({
           wrap.appendChild(canvas)
           pagesHost.appendChild(wrap)
 
-          const task = paintPage(page, canvas, width, mode, zoom)
+          const task = paintPage(page, canvas, width, mode, zoom, t('canvasUnavailable'))
           activeTasks.push(task)
 
           try {
@@ -200,7 +203,7 @@ export function PdfPreview({
         if (!cancelled) setRendering(false)
       } catch (e) {
         if (!cancelled && !isRenderCancelled(e)) {
-          setError((e as Error).message || 'Ошибка рендера PDF')
+          setError((e as Error).message || t('pdfRenderError'))
           setState('error')
           setRendering(false)
         }
@@ -261,7 +264,7 @@ export function PdfPreview({
       )}
     >
       {state === 'loading' && (
-        <p className={cn('text-sm', muted)}>Загрузка PDF…</p>
+        <p className={cn('text-sm', muted)}>{t('pdfLoading')}</p>
       )}
       {state === 'error' && (
         <p className="text-sm text-destructive">{error}</p>
@@ -281,7 +284,7 @@ export function PdfPreview({
             className={cn('h-8 w-8', darkCanvas && 'text-white hover:bg-white/15 hover:text-white')}
             disabled={pageNum <= 1 || rendering}
             onClick={() => scrollToPage(pageNum - 1)}
-            aria-label="Предыдущая страница"
+            aria-label={t('prevPage')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -295,7 +298,7 @@ export function PdfPreview({
             className={cn('h-8 w-8', darkCanvas && 'text-white hover:bg-white/15 hover:text-white')}
             disabled={pageNum >= totalPages || rendering}
             onClick={() => scrollToPage(pageNum + 1)}
-            aria-label="Следующая страница"
+            aria-label={t('nextPage')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -307,7 +310,7 @@ export function PdfPreview({
             className={cn('h-8 w-8', darkCanvas && 'text-white hover:bg-white/15 hover:text-white')}
             disabled={zoom <= 0.5 || rendering}
             onClick={() => setZoom((z) => Math.max(0.5, z - 0.25))}
-            aria-label="Уменьшить"
+            aria-label={t('zoomOut')}
           >
             <ZoomOut className="h-4 w-4" />
           </Button>
@@ -319,13 +322,13 @@ export function PdfPreview({
             className={cn('h-8 w-8', darkCanvas && 'text-white hover:bg-white/15 hover:text-white')}
             disabled={zoom >= 3 || rendering}
             onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
-            aria-label="Увеличить"
+            aria-label={t('zoomIn')}
           >
             <ZoomIn className="h-4 w-4" />
           </Button>
           {totalPages > MAX_VIEWER_PAGES && (
             <span className={cn('text-[10px]', muted)}>
-              Показаны {MAX_VIEWER_PAGES} из {totalPages} стр.
+              {t('pdfPagesTruncated', { shown: MAX_VIEWER_PAGES, total: totalPages })}
             </span>
           )}
         </div>

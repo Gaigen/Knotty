@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, ArrowLeftRight, ArrowDownCircle, Link2, Plus, Trash2, ExternalLink, Network } from 'lucide-react'
@@ -19,10 +20,9 @@ import type { TaskFullDto } from '@/lib/types'
 
 /**
  * Связи (ФТ-2.7): список с типом-бейджем и переходом, добавление по ключу.
- * «Блокируется» — отображение обратной выборки (п. 4.1.2), не отдельная связь.
- * [v1.1] Циклы в blocks отклоняются сервером с понятной ошибкой (п. 4.1.3).
  */
 export function PanelLinks({ task, onOpenTask }: { task: TaskFullDto; onOpenTask: (id: string) => void }) {
+  const t = useTranslations('panels.links')
   const qc = useQueryClient()
   const create = useCreateLink()
   const addToGraph = useCreateGraphNode()
@@ -44,8 +44,8 @@ export function PanelLinks({ task, onOpenTask }: { task: TaskFullDto; onOpenTask
           setNewKey('')
           toast.success(
             res.graphNodesAdded && res.graphNodesAdded > 0
-              ? `Связь создана. На граф добавлено задач: ${res.graphNodesAdded}`
-              : 'Связь создана'
+              ? t('createdWithGraph', { count: res.graphNodesAdded })
+              : t('created')
           )
         },
         onError: (e) => toast.error(e.message),
@@ -55,22 +55,21 @@ export function PanelLinks({ task, onOpenTask }: { task: TaskFullDto; onOpenTask
 
   return (
     <div className="space-y-5 p-4">
-      {/* добавление связи */}
       <div className="rounded-xl border bg-muted/30 p-3">
         <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <Link2 className="h-3.5 w-3.5" /> Добавить связь
+          <Link2 className="h-3.5 w-3.5" /> {t('addTitle')}
         </div>
         <div className="flex gap-1.5">
           <Select value={newType} onValueChange={setNewType}>
-            <SelectTrigger className="h-9 w-[150px] text-sm" aria-label="Тип связи">
+            <SelectTrigger className="h-9 w-[150px] text-sm" aria-label={t('linkTypeAria')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="blocks">
-                <span className="flex items-center gap-2"><ArrowRight className="h-3.5 w-3.5" /> блокирует</span>
+                <span className="flex items-center gap-2"><ArrowRight className="h-3.5 w-3.5" /> {t('blocks')}</span>
               </SelectItem>
               <SelectItem value="relates">
-                <span className="flex items-center gap-2"><ArrowLeftRight className="h-3.5 w-3.5" /> связана с</span>
+                <span className="flex items-center gap-2"><ArrowLeftRight className="h-3.5 w-3.5" /> {t('relates')}</span>
               </SelectItem>
             </SelectContent>
           </Select>
@@ -80,48 +79,52 @@ export function PanelLinks({ task, onOpenTask }: { task: TaskFullDto; onOpenTask
             onKeyDown={(e) => e.key === 'Enter' && submit()}
             placeholder={`${task.key.slice(0, task.key.indexOf('-'))}-12`}
             className="h-9 flex-1 font-mono text-sm"
-            aria-label="Ключ задачи для связи"
+            aria-label={t('taskKeyAria')}
           />
           <Button size="sm" className="h-9 gap-1" disabled={!newKey.trim() || create.isPending} onClick={submit}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          {newType === 'blocks'
-            ? `«${task.key}» блокирует указанную задачу. Если задачи не на графе — появятся на канвасе автоматически.`
-            : 'Связь без направления. Задачи по возможности добавляются на граф.'}
+          {newType === 'blocks' ? t('blocksHint', { key: task.key }) : t('relatesHint')}
         </p>
         {!task.onGraph && (
-          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-            Эта задача не на графе — связи на канвасе не видны, пока не добавите ноды.
-          </p>
+          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">{t('notOnGraph')}</p>
         )}
       </div>
 
       <LinkSection
-        title="Блокирует"
-        emptyText={task.key + ' не блокирует другие задачи'}
+        title={t('sectionBlocks')}
+        emptyText={t('emptyBlocks', { key: task.key })}
         items={outgoingBlocks}
+        task={task}
         onOpenTask={onOpenTask}
         onDelete={(id) => del.mutate({ id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })}
+        addToGraph={addToGraph}
+        qc={qc}
       />
 
-      {/* «Блокируется» — вычисляемая обратная выборка (п. 4.1.2) */}
       <LinkSection
-        title="Блокируется"
-        emptyText="Эту задачу никто не блокирует"
+        title={t('sectionBlockedBy')}
+        emptyText={t('emptyBlockedBy')}
         items={incomingBlocks}
+        task={task}
         onOpenTask={onOpenTask}
         onDelete={(id) => del.mutate({ id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })}
+        addToGraph={addToGraph}
+        qc={qc}
         incoming
       />
 
       <LinkSection
-        title="Связана с"
-        emptyText="Нет связанных задач"
+        title={t('sectionRelated')}
+        emptyText={t('emptyRelated')}
         items={relates}
+        task={task}
         onOpenTask={onOpenTask}
         onDelete={(id) => del.mutate({ id, projectId: task.projectId }, { onError: (e) => toast.error(e.message) })}
+        addToGraph={addToGraph}
+        qc={qc}
         relates
       />
     </div>
@@ -132,20 +135,28 @@ function LinkSection({
   title,
   emptyText,
   items,
+  task,
   onOpenTask,
   onDelete,
+  addToGraph,
+  qc,
   incoming,
   relates,
 }: {
   title: string
   emptyText: string
   items: TaskFullDto['links']
+  task: TaskFullDto
   onOpenTask: (id: string) => void
   onDelete: (id: string) => void
+  addToGraph: ReturnType<typeof useCreateGraphNode>
+  qc: ReturnType<typeof useQueryClient>
   incoming?: boolean
   relates?: boolean
 }) {
+  const t = useTranslations('panels.links')
   const [ctxMenu, setCtxMenu] = useState<{ pos: CtxPos; linkId: string; taskId: string; taskKey: string } | null>(null)
+
   return (
     <section aria-label={title}>
       <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -177,20 +188,20 @@ function LinkSection({
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">{l.task.key}</span>
                 <span className="truncate text-sm">{l.task.title}</span>
                 {!l.task.onGraph && (
-                  <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] text-muted-foreground">не на графе</Badge>
+                  <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] text-muted-foreground">{t('notOnGraphBadge')}</Badge>
                 )}
                 <StatusBadge name={l.task.statusName} color={l.task.statusColor} className="ml-auto hidden max-w-[110px] shrink-0 sm:inline-flex" />
               </button>
               {!l.task.onGraph && (
                 <button
                   type="button"
-                  title="Добавить на граф"
+                  title={t('addToGraph')}
                   onClick={() =>
                     addToGraph.mutate(
                       { projectId: task.projectId, refType: 'task', refId: l.task.id },
                       {
                         onSuccess: () => {
-                          toast.success(`${l.task.key} на графе`)
+                          toast.success(t('onGraph', { key: l.task.key }))
                           qc.invalidateQueries({ queryKey: ['task', task.id] })
                         },
                         onError: (e) => toast.error(e.message),
@@ -198,7 +209,7 @@ function LinkSection({
                     )
                   }
                   className="rounded p-1 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-teal-700 group-hover:opacity-100"
-                  aria-label={`Добавить ${l.task.key} на граф`}
+                  aria-label={t('addToGraphAria', { key: l.task.key })}
                 >
                   <Network className="h-3.5 w-3.5" />
                 </button>
@@ -207,7 +218,7 @@ function LinkSection({
                 type="button"
                 onClick={() => onDelete(l.linkId)}
                 className="rounded p-1 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-destructive group-hover:opacity-100"
-                aria-label={`Удалить связь с ${l.task.key}`}
+                aria-label={t('deleteLinkAria', { key: l.task.key })}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -216,14 +227,13 @@ function LinkSection({
         </ul>
       )}
 
-      {/* Контекстное меню связи по ПКМ */}
       {ctxMenu && (
         <>
           <CtxBackdrop onClose={() => setCtxMenu(null)} />
           <CtxContainer pos={ctxMenu.pos} minWidth={220}>
             <CtxItem
               icon={<ExternalLink className="h-3.5 w-3.5" />}
-              label={`Открыть ${ctxMenu.taskKey}`}
+              label={t('openTask', { key: ctxMenu.taskKey })}
               onClick={() => {
                 const id = ctxMenu.taskId
                 setCtxMenu(null)
@@ -232,7 +242,7 @@ function LinkSection({
             />
             <CtxItem
               icon={<Trash2 className="h-3.5 w-3.5" />}
-              label="Удалить связь"
+              label={t('deleteLink')}
               danger
               onClick={() => {
                 const id = ctxMenu.linkId

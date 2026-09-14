@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { jsonError, readJson, requireAdmin } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { hashPassword, validatePassword } from '@/lib/auth'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -24,7 +24,7 @@ export async function PATCH(req: Request, { params }: Params) {
     const body = await readJson<PatchUserBody>(req)
 
     const existing = await db.user.findUnique({ where: { id }, select: { id: true } })
-    if (!existing) throw new ApiError('Пользователь не найден', 404)
+    if (!existing) await apiError('userNotFound', undefined, 404)
 
     const data: {
       name?: string
@@ -37,16 +37,16 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (typeof body.name === 'string') {
       const name = body.name.trim()
-      if (!name) throw new ApiError('Имя не может быть пустым')
-      if (name.length > MAX_NAME) throw new ApiError(`Имя слишком длинное (макс. ${MAX_NAME} символов)`)
+      if (!name) await apiError('nameEmpty')
+      if (name.length > MAX_NAME) await apiError('nameTooLong', { max: MAX_NAME })
       data.name = name
     }
 
     if (typeof body.email === 'string') {
       const email = body.email.trim().toLowerCase()
-      if (!EMAIL_RE.test(email)) throw new ApiError('Некорректный email')
+      if (!EMAIL_RE.test(email)) await apiError('invalidEmail')
       const dup = await db.user.findUnique({ where: { email }, select: { id: true } })
-      if (dup && dup.id !== id) throw new ApiError(`Email «${email}» уже занят другим пользователем`)
+      if (dup && dup.id !== id) await apiError('emailTakenByOther', { email })
       data.email = email
     }
 
@@ -62,7 +62,7 @@ export async function PATCH(req: Request, { params }: Params) {
     // При смене инкрементируем эпоху сессий: все cookie пользователя становятся невалидными.
     if (typeof body.password === 'string' && body.password !== '') {
       const pwError = validatePassword(body.password)
-      if (pwError) throw new ApiError(pwError)
+      if (pwError) await apiError(pwError)
       data.passwordHash = await hashPassword(body.password)
       data.sessionEpoch = { increment: 1 }
     }
@@ -70,13 +70,13 @@ export async function PATCH(req: Request, { params }: Params) {
     if (typeof body.isAdmin === 'boolean') {
       // нельзя снять админ-права с себя самого (иначе останешься заперт снаружи)
       if (body.isAdmin === false && admin.id === id) {
-        throw new ApiError('Нельзя снять права администратора с самого себя')
+        await apiError('cannotRemoveOwnAdmin')
       }
       data.isAdmin = body.isAdmin
     }
 
     if (Object.keys(data).length === 0) {
-      throw new ApiError('Нет полей для обновления')
+      await apiError('noFieldsToUpdate')
     }
 
     const updated = await db.user.update({ where: { id }, data })
@@ -90,7 +90,7 @@ export async function PATCH(req: Request, { params }: Params) {
       createdAt: updated.createdAt.toISOString(),
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -100,10 +100,10 @@ export async function DELETE(_req: Request, { params }: Params) {
     const admin = await requireAdmin()
     const { id } = await params
 
-    if (admin.id === id) throw new ApiError('Нельзя удалить собственный аккаунт')
+    if (admin.id === id) await apiError('cannotDeleteSelf')
 
     const user = await db.user.findUnique({ where: { id }, select: { id: true, name: true } })
-    if (!user) throw new ApiError('Пользователь не найден', 404)
+    if (!user) await apiError('userNotFound', undefined, 404)
 
     const tasksCount = await db.task.count({ where: { assigneeId: id } })
     try {
@@ -112,16 +112,12 @@ export async function DELETE(_req: Request, { params }: Params) {
       // у пользователя есть комментарии/активность — FK-ограничение БД не даст удалить,
       // чтобы не потерять авторство истории
       if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2003') {
-        throw new ApiError(
-          'Нельзя удалить пользователя: за ним закреплены комментарии или записи истории. ' +
-            'Сначала перенесите/удалите их, либо оставьте аккаунт без доступа (очистите пароль).',
-          409
-        )
+        await apiError('cannotDeleteUserWithHistory', undefined, 409)
       }
       throw e
     }
     return Response.json({ ok: true, releasedTasks: tasksCount })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

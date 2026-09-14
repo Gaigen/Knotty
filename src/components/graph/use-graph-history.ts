@@ -1,9 +1,11 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { createHistoryStacks, pushHistory, type HistoryEntry } from '@/lib/graph-history'
 
 export function useGraphHistory() {
+  const t = useTranslations('graph.history')
   const stacksRef = useRef(createHistoryStacks())
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
@@ -38,11 +40,11 @@ export function useGraphHistory() {
       syncFlags()
     } catch {
       stacksRef.current.undo.push(entry)
-      throw new Error('Не удалось отменить действие')
+      throw new Error(t('undoFailed'))
     } finally {
       busyRef.current = false
     }
-  }, [syncFlags])
+  }, [syncFlags, t])
 
   const redo = useCallback(async () => {
     if (busyRef.current) return
@@ -55,11 +57,11 @@ export function useGraphHistory() {
       syncFlags()
     } catch {
       stacksRef.current.redo.push(entry)
-      throw new Error('Не удалось повторить действие')
+      throw new Error(t('redoFailed'))
     } finally {
       busyRef.current = false
     }
-  }, [syncFlags])
+  }, [syncFlags, t])
 
   return { push, undo, redo, clear, canUndo, canRedo }
 }

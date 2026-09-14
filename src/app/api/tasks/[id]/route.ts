@@ -2,7 +2,9 @@ import { db } from '@/lib/db'
 import { PRIORITIES, TASK_TYPES } from '@/lib/config'
 import type { LinkType, TaskFullDto, TaskType } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError, assertParentAllowed, assertTypeChangeAllowed } from '@/lib/server/validation'
+import { getTranslations } from 'next-intl/server'
+import { apiError, resolveApiLocale, taskTypeLabel } from '@/lib/server/i18n'
+import { assertParentAllowed, assertTypeChangeAllowed } from '@/lib/server/validation'
 import { logActivity, resolveActivityFieldValues } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { getTaskRows, safeParseArray } from '@/lib/server/serializers'
@@ -20,7 +22,7 @@ async function buildFull(taskId: string): Promise<TaskFullDto> {
       assignee: true,
     },
   })
-  if (!task) throw new ApiError('Задача не найдена', 404)
+  if (!task) await apiError('taskNotFound', undefined, 404)
 
     const [comments, attachments, linksOut, linksIn, activities, children, blockedByCount, graphNodesOnCanvas] = await Promise.all([
     db.comment.findMany({
@@ -163,7 +165,7 @@ export async function GET(_req: Request, { params }: Params) {
     const { id } = await params
     return Response.json(await buildFull(id))
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -180,16 +182,16 @@ interface PatchTaskBody {
   boardOrder?: string
 }
 
-const FIELD_LABELS: Record<string, string> = {
-  title: 'название',
-  description: 'описание',
-  type: 'тип',
-  assigneeId: 'исполнитель',
-  priority: 'приоритет',
-  dueDate: 'срок',
-  labels: 'метки',
-  parentId: 'родитель',
-}
+const ACTIVITY_FIELD_KEYS = new Set([
+  'title',
+  'description',
+  'type',
+  'assigneeId',
+  'priority',
+  'dueDate',
+  'labels',
+  'parentId',
+])
 
 const MAX_DESCRIPTION_LENGTH = 100_000
 
@@ -203,7 +205,7 @@ export async function PATCH(req: Request, { params }: Params) {
       where: { id },
       include: { project: { select: { id: true, statuses: { orderBy: { order: 'asc' } } } } },
     })
-    if (!task) throw new ApiError('Задача не найдена', 404)
+    if (!task) await apiError('taskNotFound', undefined, 404)
 
     const data: Record<string, unknown> = {}
     const changes: { field: string; old: unknown; new: unknown }[] = []
@@ -212,7 +214,7 @@ export async function PATCH(req: Request, { params }: Params) {
     // --- простые поля ---
     if (typeof body.title === 'string') {
       const title = body.title.trim()
-      if (!title) throw new ApiError('Название задачи не может быть пустым')
+      if (!title) await apiError('taskTitleEmpty')
       if (title !== task.title) {
         data.title = title
         changes.push({ field: 'title', old: task.title, new: title })
@@ -220,19 +222,19 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (typeof body.description === 'string' && body.description !== task.description) {
       if (body.description.length > MAX_DESCRIPTION_LENGTH) {
-        throw new ApiError(`Описание слишком длинное (макс. ${MAX_DESCRIPTION_LENGTH} символов)`)
+        await apiError('descriptionTooLong', { max: MAX_DESCRIPTION_LENGTH })
       }
       data.description = body.description
       changes.push({ field: 'description', old: null, new: null }) // содержимое не пишем в историю — только факт
     }
     if (body.priority !== undefined && body.priority !== task.priority) {
-      if (!PRIORITIES.includes(body.priority as (typeof PRIORITIES)[number])) throw new ApiError('Некорректный приоритет')
+      if (!PRIORITIES.includes(body.priority as (typeof PRIORITIES)[number])) await apiError('invalidPriority')
       data.priority = body.priority
       changes.push({ field: 'priority', old: task.priority, new: body.priority })
     }
     if (body.dueDate !== undefined) {
       const newDate = body.dueDate ? new Date(body.dueDate) : null
-      if (body.dueDate && Number.isNaN(newDate!.getTime())) throw new ApiError('Некорректная дата')
+      if (body.dueDate && Number.isNaN(newDate!.getTime())) await apiError('invalidDate')
       const oldDate = task.dueDate?.getTime() ?? null
       if ((newDate?.getTime() ?? null) !== oldDate) {
         data.dueDate = newDate
@@ -252,7 +254,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.assigneeId !== undefined && body.assigneeId !== task.assigneeId) {
       if (body.assigneeId) {
         const assignee = await db.user.findUnique({ where: { id: body.assigneeId }, select: { id: true, name: true } })
-        if (!assignee) throw new ApiError('Исполнитель не найден')
+        if (!assignee) await apiError('assigneeNotFound')
         data.assigneeId = body.assigneeId
       } else {
         data.assigneeId = null
@@ -262,18 +264,18 @@ export async function PATCH(req: Request, { params }: Params) {
 
     // --- тип ---
     if (body.type !== undefined && body.type !== task.type) {
-      if (!TASK_TYPES.includes(body.type as (typeof TASK_TYPES)[number])) throw new ApiError('Некорректный тип задачи')
+      if (!TASK_TYPES.includes(body.type as (typeof TASK_TYPES)[number])) await apiError('invalidTaskType')
       const childTypes = await db.task.findMany({ where: { parentId: id }, select: { type: true } })
-      assertTypeChangeAllowed(body.type as 'epic', childTypes.map((c) => c.type)) // [v1.1] п. 4.1.1
+      await assertTypeChangeAllowed(body.type as 'epic', childTypes.map((c) => c.type)) // [v1.1] п. 4.1.1
       if (task.parentId) {
         // смена типа должна сохранять допустимость пары с текущим родителем
         const parent = await db.task.findUnique({ where: { id: task.parentId }, select: { type: true } })
         if (parent) {
-          const { ALLOWED_CHILDREN, TYPE_LABELS_RU } = await import('@/lib/config')
+          const { ALLOWED_CHILDREN } = await import('@/lib/config')
           if (!ALLOWED_CHILDREN[parent.type]?.includes(body.type)) {
-            throw new ApiError(
-              `Нельзя сменить тип на «${TYPE_LABELS_RU[body.type]}»: текущий родитель — «${TYPE_LABELS_RU[parent.type]}», такая пара не разрешена`
-            )
+            const parentType = await taskTypeLabel(parent.type)
+            const childType = await taskTypeLabel(body.type)
+            await apiError('parentTypeMismatch', { parentType, childType })
           }
         }
       }
@@ -284,7 +286,7 @@ export async function PATCH(req: Request, { params }: Params) {
     // --- статус (+ позиция в канбане) ---
     if (body.statusId !== undefined && body.statusId !== task.statusId) {
       const status = task.project.statuses.find((s) => s.id === body.statusId)
-      if (!status) throw new ApiError('Статус не найден в этом проекте')
+      if (!status) await apiError('statusNotFoundInProject')
       const oldStatus = task.project.statuses.find((s) => s.id === task.statusId)
       data.statusId = status.id
       statusChangedTo = status.name
@@ -325,11 +327,16 @@ export async function PATCH(req: Request, { params }: Params) {
     await db.project.update({ where: { id: task.projectId }, data: { updatedAt: new Date() } })
 
     // --- история (ФТ-5.3) ---
+    const locale = await resolveApiLocale()
+    const tHistory = await getTranslations({ locale, namespace: 'taskPanel.history' })
     for (const ch of changes) {
       const resolved = await resolveActivityFieldValues(ch.field, ch.old, ch.new)
+      const fieldLabel = ACTIVITY_FIELD_KEYS.has(ch.field)
+        ? tHistory(`fields.${ch.field}` as 'fields.title')
+        : ch.field
       await logActivity(id, user.id, 'field_changed', {
         field: ch.field,
-        fieldLabel: FIELD_LABELS[ch.field] ?? ch.field,
+        fieldLabel,
         old: ch.field === 'description' ? undefined : resolved.old,
         new: ch.field === 'description' ? undefined : resolved.new,
         changed: true,
@@ -349,7 +356,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return Response.json(await buildFull(id))
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -358,7 +365,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   try {
     const { id } = await params
     const task = await db.task.findUnique({ where: { id }, select: { id: true, projectId: true } })
-    if (!task) throw new ApiError('Задача не найдена', 404)
+    if (!task) await apiError('taskNotFound', undefined, 404)
 
     const attachments = await db.attachment.findMany({ where: { taskId: id }, select: { storageKey: true, previewKey: true } })
     // fix: сначала собираем ноды графа задачи, чтобы каскадно удалить её рёбра канваса (иначе сироты)
@@ -381,6 +388,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     publishProjectChange(task.projectId)
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

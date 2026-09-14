@@ -3,7 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import sharp from 'sharp'
 import { MAX_FILE_MB } from '@/lib/config'
-import { ApiError } from './validation'
+import { apiError } from './i18n'
 
 // Каталог загрузок: env UPLOADS_DIR (в Docker — /data/uploads, volume) либо
 // ./data/uploads относительно рабочей директории (локальный запуск).
@@ -41,13 +41,13 @@ export interface StoredFile {
  */
 export async function storeFile(file: File): Promise<StoredFile> {
   const size = file.size
-  if (size === 0) throw new ApiError(`Файл «${file.name}» пуст`)
+  if (size === 0) throw await apiError('fileEmpty', { name: file.name })
   if (size > MAX_FILE_MB * 1024 * 1024) {
-    throw new ApiError(`Файл «${file.name}» больше ${MAX_FILE_MB} МБ`)
+    throw await apiError('fileTooLarge', { name: file.name, maxMb: MAX_FILE_MB })
   }
   const ext = safeExtension(file.name)
   if (file.name && path.extname(file.name) && !ext) {
-    throw new ApiError(`Тип файла «${file.name}» не разрешён (исполняемые файлы запрещены)`)
+    throw await apiError('fileTypeNotAllowedExecutable', { name: file.name })
   }
 
   await ensureDir()
@@ -121,13 +121,13 @@ export async function readStoredRange(key: string, start: number, end: number): 
 /** Сохранение из буфера (импорт bundle, серверные операции) */
 export async function storeBuffer(buffer: Buffer, fileName: string, mime: string): Promise<StoredFile> {
   const size = buffer.length
-  if (size === 0) throw new ApiError(`Файл «${fileName}» пуст`)
+  if (size === 0) throw await apiError('fileEmpty', { name: fileName })
   if (size > MAX_FILE_MB * 1024 * 1024) {
-    throw new ApiError(`Файл «${fileName}» больше ${MAX_FILE_MB} МБ`)
+    throw await apiError('fileTooLarge', { name: fileName, maxMb: MAX_FILE_MB })
   }
   const ext = safeExtension(fileName)
   if (fileName && path.extname(fileName) && !ext) {
-    throw new ApiError(`Тип файла «${fileName}» не разрешён`)
+    throw await apiError('fileTypeNotAllowed', { name: fileName })
   }
 
   await ensureDir()

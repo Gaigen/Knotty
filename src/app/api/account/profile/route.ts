@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_NAME = 80
@@ -21,16 +21,16 @@ export async function PATCH(req: Request) {
 
     if (typeof body.name === 'string') {
       const name = body.name.trim()
-      if (!name) throw new ApiError('Имя не может быть пустым')
-      if (name.length > MAX_NAME) throw new ApiError(`Имя слишком длинное (макс. ${MAX_NAME} символов)`)
+      if (!name) throw await apiError('nameEmpty')
+      if (name.length > MAX_NAME) throw await apiError('nameTooLong', { max: MAX_NAME })
       data.name = name
     }
 
     if (typeof body.email === 'string') {
       const email = body.email.trim().toLowerCase()
-      if (!EMAIL_RE.test(email)) throw new ApiError('Некорректный email')
+      if (!EMAIL_RE.test(email)) throw await apiError('invalidEmail')
       const dup = await db.user.findUnique({ where: { email }, select: { id: true } })
-      if (dup && dup.id !== user.id) throw new ApiError(`Email «${email}» уже занят`)
+      if (dup && dup.id !== user.id) throw await apiError('emailTaken', { email })
       data.email = email
     }
 
@@ -42,7 +42,7 @@ export async function PATCH(req: Request) {
     }
 
     if (Object.keys(data).length === 0) {
-      throw new ApiError('Нет полей для обновления')
+      throw await apiError('noFieldsToUpdate')
     }
 
     const updated = await db.user.update({ where: { id: user.id }, data })
@@ -54,6 +54,6 @@ export async function PATCH(req: Request) {
       isAdmin: updated.isAdmin,
     })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

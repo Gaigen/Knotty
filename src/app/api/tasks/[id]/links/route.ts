@@ -2,7 +2,8 @@ import { db } from '@/lib/db'
 import { LINK_TYPES } from '@/lib/config'
 import type { LinkType } from '@/lib/types'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
-import { ApiError, assertLinkAllowed } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
+import { assertLinkAllowed } from '@/lib/server/validation'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 import { ensureTaskGraphNodes } from '@/lib/server/graph-nodes'
@@ -21,23 +22,23 @@ export async function POST(req: Request, { params }: Params) {
     const body = await readJson<{ toTaskId?: string; toKey?: string; type?: string }>(req)
 
     const type = (body.type ?? 'relates') as LinkType
-    if (!LINK_TYPES.includes(type)) throw new ApiError('Некорректный тип связи')
+    if (!LINK_TYPES.includes(type)) await apiError('invalidLinkType')
 
     // цель: по id или по ключу задачи «VERF-12»
     let toTaskId = body.toTaskId ?? null
     if (!toTaskId && body.toKey) {
       const keyMatch = body.toKey.trim().toUpperCase().match(/^([A-Z]{2,5})-(\d+)$/)
-      if (!keyMatch) throw new ApiError('Ключ задачи должен быть в формате ПРОЕКТ-номер, например VERF-12')
+      if (!keyMatch) await apiError('invalidTaskKeyFormat')
       const project = await db.project.findUnique({ where: { key: keyMatch[1] }, select: { id: true } })
-      if (!project) throw new ApiError(`Проект «${keyMatch[1]}» не найден`)
+      if (!project) await apiError('projectKeyNotFound', { key: keyMatch[1] })
       const task = await db.task.findFirst({
         where: { projectId: project.id, number: Number(keyMatch[2]) },
         select: { id: true },
       })
-      if (!task) throw new ApiError(`Задача ${keyMatch[1]}-${keyMatch[2]} не найдена`)
+      if (!task) await apiError('taskKeyNotFound', { key: keyMatch[1], number: keyMatch[2] })
       toTaskId = task.id
     }
-    if (!toTaskId) throw new ApiError('Укажите задачу для связи')
+    if (!toTaskId) await apiError('specifyLinkTarget')
 
     await assertLinkAllowed(fromTaskId, toTaskId, type)
 
@@ -64,6 +65,6 @@ export async function POST(req: Request, { params }: Params) {
       { status: 201 }
     )
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

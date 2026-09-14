@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -21,11 +22,12 @@ export function DeleteProjectDialog({
   onClose: () => void
   onDeleted: () => void
 }) {
+  const t = useTranslations('dialogs')
+  const tc = useTranslations('common')
   const del = useDeleteProject()
   const [keyInput, setKeyInput] = useState('')
   const [prevProjectId, setPrevProjectId] = useState<string | null>(project?.id ?? null)
 
-  // сброс поля при открытии нового проекта (паттерн «правка состояния при рендере»)
   if ((project?.id ?? null) !== prevProjectId) {
     setPrevProjectId(project?.id ?? null)
     setKeyInput('')
@@ -37,14 +39,15 @@ export function DeleteProjectDialog({
     <Dialog open={!!project} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-destructive">Удалить проект «{project?.name}»?</DialogTitle>
-          <DialogDescription>
-            Будут удалены все задачи, связи, вложения, комментарии и ноды графа. Действие необратимо.
-          </DialogDescription>
+          <DialogTitle className="text-destructive">
+            {project ? t('deleteTitle', { name: project.name }) : ''}
+          </DialogTitle>
+          <DialogDescription>{t('deleteDesc')}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 py-2">
           <Label htmlFor="confirm-key">
-            Для подтверждения введите ключ проекта <span className="font-mono font-semibold">{project?.key}</span>
+            {t('confirmKeyLabel')}{' '}
+            <span className="font-mono font-semibold">{project?.key}</span>
           </Label>
           <Input
             id="confirm-key"
@@ -55,7 +58,7 @@ export function DeleteProjectDialog({
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Отмена</Button>
+          <Button variant="outline" onClick={onClose}>{tc('cancel')}</Button>
           <Button
             variant="destructive"
             disabled={confirmDisabled || del.isPending}
@@ -73,7 +76,7 @@ export function DeleteProjectDialog({
               )
             }
           >
-            {del.isPending ? 'Удаляем…' : 'Удалить навсегда'}
+            {del.isPending ? t('deleting') : t('deleteForever')}
           </Button>
         </DialogFooter>
       </DialogContent>

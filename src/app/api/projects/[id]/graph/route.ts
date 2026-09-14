@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { collectBlockedTaskIds } from '@/lib/graph-blocks'
 import { assertParentGroup } from '@/lib/server/graph-groups'
 import type { GraphCanvasEdgeType, GraphDto, GraphNodeDto, Priority, TaskType } from '@/lib/types'
@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: Params) {
     const { id: projectId } = await params
     await getCurrentUser()
     const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
-    if (!project) throw new ApiError('Проект не найден', 404)
+    if (!project) await apiError('projectNotFound', undefined, 404)
 
     const [nodeRows, tasks, links, attachments, canvasEdgeRows] = await Promise.all([
       db.graphNode.findMany({ where: { projectId }, orderBy: { createdAt: 'asc' } }),
@@ -129,7 +129,7 @@ export async function GET(_req: Request, { params }: Params) {
     const graph: GraphDto = { nodes, edges, hierarchy }
     return Response.json(graph)
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -142,7 +142,7 @@ export async function PATCH(req: Request, { params }: Params) {
       positions?: { id: string; x: number; y: number; parentId?: string | null }[]
     }>(req)
     const positions = body.positions ?? []
-    if (!Array.isArray(positions) || positions.length > 2000) throw new ApiError('Некорректные позиции')
+    if (!Array.isArray(positions) || positions.length > 2000) await apiError('invalidPositions')
 
     for (const p of positions) {
       if (p.parentId) await assertParentGroup(projectId, p.id, p.parentId)
@@ -163,6 +163,6 @@ export async function PATCH(req: Request, { params }: Params) {
     publishProjectChange(projectId, { scope: 'graph' })
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

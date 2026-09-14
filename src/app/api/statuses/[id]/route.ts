@@ -3,7 +3,7 @@ import { NO_STATUS_LABEL } from '@/lib/config'
 import { getCurrentUser, jsonError, readJson } from '@/lib/server/context'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { generateKeyBetween } from 'fractional-indexing'
 
 type Params = { params: Promise<{ id: string }> }
@@ -21,28 +21,28 @@ export async function PATCH(req: Request, { params }: Params) {
     const body = await readJson<{ name?: string; color?: string; category?: number }>(req)
 
     const status = await db.status.findUnique({ where: { id }, select: { id: true, projectId: true, name: true } })
-    if (!status) throw new ApiError('Статус не найден', 404)
+    if (!status) await apiError('statusNotFound', undefined, 404)
 
     const data: Record<string, unknown> = {}
 
     if (body.name !== undefined) {
       const name = body.name.trim()
-      if (!name) throw new ApiError('Название статуса не может быть пустым')
-      if (name.length > 40) throw new ApiError('Название статуса слишком длинное (макс. 40 символов)')
+      if (!name) await apiError('statusNameEmpty')
+      if (name.length > 40) await apiError('statusNameTooLong')
       if (name !== status.name) {
         const sameName = await db.status.findFirst({ where: { projectId: status.projectId, name }, select: { id: true } })
-        if (sameName && sameName.id !== id) throw new ApiError(`Статус «${name}» уже есть в этом проекте`)
+        if (sameName && sameName.id !== id) await apiError('statusNameTaken', { name })
       }
       data.name = name
     }
     if (body.color !== undefined) {
-      if (!STATUS_COLORS.includes(body.color)) throw new ApiError('Недопустимый цвет статуса')
+      if (!STATUS_COLORS.includes(body.color)) await apiError('invalidStatusColor')
       data.color = body.color
     }
     if (body.category !== undefined) {
       const category = Number(body.category)
       if (!Number.isInteger(category) || category < 0 || category > 3) {
-        throw new ApiError('Категория: 0 бэклог / 1 к работе / 2 в работе / 3 готово')
+        await apiError('invalidStatusCategory')
       }
       data.category = category
     }
@@ -53,7 +53,7 @@ export async function PATCH(req: Request, { params }: Params) {
     publishProjectChange(status.projectId)
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }
 
@@ -92,14 +92,14 @@ async function resolveMigrateTarget(
   }
 
   const migrateTo = (body.migrateTo ?? '').trim()
-  if (!migrateTo) throw new ApiError('Выберите статус для переноса задач или создайте «Нет статуса»')
-  if (migrateTo === excludeId) throw new ApiError('Нельзя перенести задачи в удаляемый статус')
+  if (!migrateTo) await apiError('chooseMigrateStatusOrCreateNoStatus')
+  if (migrateTo === excludeId) await apiError('cannotMigrateToDeletingStatus')
 
   const target = await db.status.findFirst({
     where: { id: migrateTo, projectId },
     select: { id: true, name: true },
   })
-  if (!target) throw new ApiError('Статус для переноса не найден в этом проекте')
+  if (!target) await apiError('migrateTargetNotFound')
   return target
 }
 
@@ -147,14 +147,14 @@ export async function DELETE(req: Request, { params }: Params) {
     const body = await readJson<DeleteStatusBody>(req).catch(() => ({} as DeleteStatusBody))
 
     const status = await db.status.findUnique({ where: { id }, select: { id: true, projectId: true, name: true } })
-    if (!status) throw new ApiError('Статус не найден', 404)
+    if (!status) await apiError('statusNotFound', undefined, 404)
 
     const [taskCount, statusCount] = await Promise.all([
       db.task.count({ where: { statusId: id } }),
       db.status.count({ where: { projectId: status.projectId } }),
     ])
     if (statusCount <= 1) {
-      throw new ApiError('В проекте должен остаться хотя бы один статус')
+      await apiError('projectMustHaveOneStatus')
     }
 
     if (taskCount > 0) {
@@ -173,6 +173,6 @@ export async function DELETE(req: Request, { params }: Params) {
     publishProjectChange(status.projectId)
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

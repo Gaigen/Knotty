@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { getCurrentUser, jsonError } from '@/lib/server/context'
-import { ApiError } from '@/lib/server/validation'
+import { apiError } from '@/lib/server/i18n'
 import { logActivity } from '@/lib/server/activity'
 import { publishProjectChange } from '@/lib/server/realtime'
 
@@ -17,7 +17,7 @@ export async function DELETE(_req: Request, { params }: Params) {
         toTask: { select: { id: true, number: true, project: { select: { key: true } } } },
       },
     })
-    if (!link) throw new ApiError('Связь не найдена', 404)
+    if (!link) await apiError('linkNotFound', undefined, 404)
     await db.link.delete({ where: { id } })
     await logActivity(link.fromTask.id, user.id, 'unlinked', { type: link.type, otherKey: `${link.toTask.project.key}-${link.toTask.number}` })
     await logActivity(link.toTask.id, user.id, 'unlinked', { type: link.type, otherKey: `${link.fromTask.project.key}-${link.fromTask.number}` })
@@ -28,6 +28,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     })
     return Response.json({ ok: true })
   } catch (e) {
-    return jsonError(e)
+    return await jsonError(e)
   }
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import { AlertTriangle, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -12,6 +13,8 @@ export default function GlobalError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const t = useTranslations('errors')
+
   useEffect(() => {
     console.error('[app error]', error)
   }, [error])
@@ -22,17 +25,15 @@ export default function GlobalError({
         <AlertTriangle className="h-7 w-7 text-destructive" />
       </div>
       <div>
-        <h2 className="text-lg font-semibold">Что-то пошло не так</h2>
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          Произошла непредвиденная ошибка интерфейса. Попробуйте перезагрузить страницу — данные сохранены.
-        </p>
+        <h2 className="text-lg font-semibold">{t('title')}</h2>
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">{t('description')}</p>
       </div>
       <div className="flex gap-2">
         <Button onClick={reset} className="gap-1.5">
-          <RotateCcw className="h-4 w-4" /> Попробовать снова
+          <RotateCcw className="h-4 w-4" /> {t('retry')}
         </Button>
         <Button variant="outline" onClick={() => window.location.assign('/')}>
-          На главную
+          {t('home')}
         </Button>
       </div>
     </div>

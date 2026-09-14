@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { GRAPH_ARROW_MARKER_PX, GRAPH_EDGE_LEGEND } from '@/lib/graph-edge-theme'
 import { cn } from '@/lib/utils'
 
@@ -8,6 +9,8 @@ const LEGEND_ARROW_W = GRAPH_ARROW_MARKER_PX
 const LEGEND_ARROW_H = GRAPH_ARROW_MARKER_PX * 0.55
 
 export function GraphEdgeLegend({ className }: { className?: string }) {
+  const t = useTranslations('graph.edges')
+
   return (
     <div className={cn('flex flex-wrap items-center gap-x-2.5 gap-y-1.5', className)}>
       {GRAPH_EDGE_LEGEND.map((item) => (
@@ -29,7 +32,7 @@ export function GraphEdgeLegend({ className }: { className?: string }) {
               />
             )}
           </svg>
-          <span>{item.label}</span>
+          <span>{t(item.kind)}</span>
         </span>
       ))}
     </div>

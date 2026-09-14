@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Maximize2 } from 'lucide-react'
 import { MarkdownView } from '@/components/shared/markdown'
 import { PdfPreview } from '@/components/shared/pdf-preview'
@@ -15,6 +16,7 @@ import {
 type Att = { id: string; fileName: string; mime: string; hasPreview: boolean }
 
 function GraphTextSnippet({ url, asMarkdown }: { url: string; asMarkdown?: boolean }) {
+  const tc = useTranslations('common')
   const [text, setText] = useState<string | null>(null)
 
   useEffect(() => {
@@ -36,7 +38,7 @@ function GraphTextSnippet({ url, asMarkdown }: { url: string; asMarkdown?: boole
   }, [url])
 
   if (!text) {
-    return <p className="p-2 text-[10px] text-muted-foreground">Загрузка…</p>
+    return <p className="p-2 text-[10px] text-muted-foreground">{tc('loading')}</p>
   }
 
   if (asMarkdown) {
@@ -67,6 +69,7 @@ export function AttachmentGraphPreview({
   autoFit?: boolean
   onAutoFitSize?: (w: number, h: number) => void
 }) {
+  const t = useTranslations('shared')
   const kind = resolveAttachmentPreviewKind(attachment.mime, attachment.fileName)
   const fileUrl = attachmentFileUrl(attachment.id)
   const thumbUrl = attachment.hasPreview ? attachmentFileUrl(attachment.id, true) : fileUrl
@@ -87,8 +90,8 @@ export function AttachmentGraphPreview({
         onOpenPreview?.(attachment)
       }}
       onDoubleClick={(e) => e.stopPropagation()}
-      aria-label="Полноэкранный просмотр"
-      title="Полноэкранный просмотр"
+      aria-label={t('fullscreenPreview')}
+      title={t('fullscreenPreview')}
     >
       <Maximize2 className="h-3.5 w-3.5" />
     </button>

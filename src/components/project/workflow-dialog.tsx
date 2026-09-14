@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Check, GripVertical, Palette, Plus, Trash2, Workflow,
@@ -45,7 +46,7 @@ import {
   useCreateStatus, useDeleteStatus, useReorderStatuses, useTasks, useUpdateStatus,
 } from '@/lib/api'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { CATEGORY_LABELS_RU, NO_STATUS_LABEL } from '@/lib/config'
+import { useEnumLabels } from '@/lib/i18n/use-enum-labels'
 import { cn } from '@/lib/utils'
 import type { ProjectDetailDto, StatusDto } from '@/lib/types'
 
@@ -68,6 +69,10 @@ export function WorkflowDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
 }) {
+  const tp = useTranslations('project')
+  const td = useTranslations('dialogs')
+  const tc = useTranslations('common')
+  const { categoryLabel, noStatusLabel } = useEnumLabels()
   const create = useCreateStatus()
   const update = useUpdateStatus()
   const del = useDeleteStatus()
@@ -170,7 +175,7 @@ export function WorkflowDialog({
         onSuccess: (r) => {
           setStatuses((ss) => [...ss, { id: r.id, projectId: project.id, name, color: newColor, category: newCategory, order: ss.length }])
           setNewName('')
-          toast.success(`Статус «${name}» добавлен`)
+          toast.success(tp('statusAdded', { name }))
         },
         onError: (e) => toast.error(e.message),
       }
@@ -206,7 +211,7 @@ export function WorkflowDialog({
         onSuccess: () => {
           setStatuses((ss) => ss.filter((x) => x.id !== s.id))
           setDeleteTarget(null)
-          toast.success(`Статус «${s.name}» удалён`)
+          toast.success(tp('statusDeleted', { name: s.name }))
         },
         onError: (e) => toast.error(e.message),
       }
@@ -217,7 +222,7 @@ export function WorkflowDialog({
     if (!deleteTarget) return
     const { status, migrateToId, createNoStatus } = deleteTarget
     if (!createNoStatus && !migrateToId) {
-      toast.error('Выберите статус для переноса задач')
+      toast.error(tp('selectMigrateStatus'))
       return
     }
     confirmRemove(status, { migrateTo: migrateToId, createNoStatus })
@@ -234,13 +239,9 @@ export function WorkflowDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Workflow className="h-4 w-4" /> Workflow проекта
+            <Workflow className="h-4 w-4" /> {tp('workflowTitle')}
           </DialogTitle>
-          <DialogDescription>
-            Статусы образуют колонки канбана и порядок сортировки. Перетаскивайте строки для изменения порядка.
-            Категория задаёт группу для прогресса (бэклог / в работе / готово).
-            При удалении статуса с задачами — выберите, в какой статус их перенести.
-          </DialogDescription>
+          <DialogDescription>{tp('workflowDescription')}</DialogDescription>
         </DialogHeader>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -259,6 +260,7 @@ export function WorkflowDialog({
                   onRemove={requestRemove}
                   deletePending={del.isPending}
                   canDelete={statuses.length > 1}
+                  categoryLabel={categoryLabel}
                 />
               ))}
             </div>
@@ -273,7 +275,7 @@ export function WorkflowDialog({
                 type="button"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-transparent transition-transform hover:scale-105"
                 style={{ backgroundColor: newColor }}
-                aria-label="Цвет нового статуса"
+                aria-label={tp('newStatusColorAria')}
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <Palette className="h-3.5 w-3.5 text-white drop-shadow" />
@@ -291,7 +293,7 @@ export function WorkflowDialog({
                       newColor === c ? 'border-foreground' : 'border-transparent'
                     )}
                     style={{ backgroundColor: c }}
-                    aria-label={`Цвет ${c}`}
+                    aria-label={td('colorAria', { color: c })}
                   >
                     {newColor === c && <Check className="h-3.5 w-3.5 text-white drop-shadow" />}
                   </button>
@@ -304,18 +306,18 @@ export function WorkflowDialog({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addStatus()}
-            placeholder="Новый статус, Enter — добавить"
+            placeholder={tp('newStatusPlaceholder')}
             className="h-8 flex-1 text-sm"
-            aria-label="Название нового статуса"
+            aria-label={tp('newStatusNameAria')}
           />
           <Select value={String(newCategory)} onValueChange={(v) => setNewCategory(Number(v))}>
-            <SelectTrigger className="h-8 w-[130px] shrink-0 text-xs" aria-label="Категория нового статуса">
+            <SelectTrigger className="h-8 w-[130px] shrink-0 text-xs" aria-label={tp('newStatusCategoryAria')}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {[0, 1, 2, 3].map((c) => (
                 <SelectItem key={c} value={String(c)} className="text-sm">
-                  {CATEGORY_LABELS_RU[c]}
+                  {categoryLabel(c)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -325,14 +327,14 @@ export function WorkflowDialog({
             className="h-8 w-8 shrink-0"
             onClick={addStatus}
             disabled={!newName.trim() || create.isPending}
-            aria-label="Добавить статус"
+            aria-label={tp('addStatusAria')}
           >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Изменения применяются сразу. Всего статусов:{' '}
+          {tp('statusCount')}{' '}
           <Badge variant="secondary" className="h-8 min-w-8 px-2 text-xs font-mono tabular-nums">
             {statuses.length}
           </Badge>
@@ -342,14 +344,12 @@ export function WorkflowDialog({
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить статус «{deleteTarget?.status.name}»?</AlertDialogTitle>
+            <AlertDialogTitle>{tp('deleteStatusTitle', { name: deleteTarget?.status.name ?? '' })}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  В этом статусе {deleteTaskCount} задач(и). Перед удалением перенесите их в другой статус.
-                </p>
+                <p>{tp('deleteStatusTasks', { count: deleteTaskCount })}</p>
                 <div className="space-y-2">
-                  <Label className="text-foreground">Перенести задачи в</Label>
+                  <Label className="text-foreground">{tp('migrateTo')}</Label>
                   <Select
                     value={deleteTarget?.migrateToId ?? ''}
                     onValueChange={(v) =>
@@ -357,8 +357,8 @@ export function WorkflowDialog({
                     }
                     disabled={deleteTarget?.createNoStatus || migrateOptions.length === 0}
                   >
-                    <SelectTrigger className="h-9 w-full" aria-label="Статус для переноса задач">
-                      <SelectValue placeholder="Выберите статус" />
+                    <SelectTrigger className="h-9 w-full" aria-label={tp('migrateAria')}>
+                      <SelectValue placeholder={tp('migratePlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
                       {migrateOptions.map((s) => (
@@ -379,18 +379,16 @@ export function WorkflowDialog({
                   />
                   <div className="space-y-1">
                     <Label htmlFor="create-no-status" className="cursor-pointer font-medium text-foreground">
-                      Создать статус «{NO_STATUS_LABEL}» и перенести задачи туда
+                      {tp('createNoStatus', { label: noStatusLabel() })}
                     </Label>
-                    <p className="text-xs">
-                      Если такой статус уже есть — задачи перейдут в него. Новый статус попадёт в категорию «Бэклог».
-                    </p>
+                    <p className="text-xs">{tp('createNoStatusHint')}</p>
                   </div>
                 </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={del.isPending}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={del.isPending}>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               disabled={
@@ -402,7 +400,7 @@ export function WorkflowDialog({
                 confirmDeleteWithMigrate()
               }}
             >
-              Удалить и перенести
+              {tp('deleteAndMigrate')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -422,6 +420,7 @@ function StatusSortableRow({
   onRemove,
   deletePending,
   canDelete,
+  categoryLabel,
 }: {
   status: StatusDto
   taskCount: number
@@ -433,7 +432,10 @@ function StatusSortableRow({
   onRemove: (s: StatusDto) => void
   deletePending: boolean
   canDelete: boolean
+  categoryLabel: (c: number) => string
 }) {
+  const tp = useTranslations('project')
+  const td = useTranslations('dialogs')
   const {
     attributes,
     listeners,
@@ -447,10 +449,10 @@ function StatusSortableRow({
   const [colorOpen, setColorOpen] = useState(false)
   const hasTasks = taskCount > 0
   const deleteTitle = !canDelete
-    ? 'В проекте должен остаться хотя бы один статус'
+    ? tp('keepOneStatus')
     : hasTasks
-      ? `Удалить статус (${taskCount} задач(и) — откроется перенос)`
-      : 'Удалить статус'
+      ? tp('deleteStatusWithTasks', { count: taskCount })
+      : tp('deleteStatus')
 
   return (
     <div
@@ -465,8 +467,8 @@ function StatusSortableRow({
         ref={setActivatorNodeRef}
         type="button"
         className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
-        aria-label={`Перетащить статус «${s.name}»`}
-        title="Перетащить"
+        aria-label={tp('dragStatusAria', { name: s.name })}
+        title={tp('drag')}
         {...attributes}
         {...listeners}
       >
@@ -479,7 +481,7 @@ function StatusSortableRow({
             type="button"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-transparent transition-colors hover:border-foreground/20"
             style={{ backgroundColor: s.color }}
-            aria-label={`Цвет статуса «${s.name}»`}
+            aria-label={tp('statusColorAria', { name: s.name })}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <Palette className="h-3.5 w-3.5 text-white drop-shadow" />
@@ -497,7 +499,7 @@ function StatusSortableRow({
                   s.color === c ? 'border-foreground' : 'border-transparent'
                 )}
                 style={{ backgroundColor: c }}
-                aria-label={`Цвет ${c}`}
+                aria-label={td('colorAria', { color: c })}
               >
                 {s.color === c && <Check className="h-3.5 w-3.5 text-white drop-shadow" />}
               </button>
@@ -524,7 +526,7 @@ function StatusSortableRow({
             }
           }}
           className="h-8 flex-1 border-input bg-background px-1.5 text-sm focus-visible:border-input"
-          aria-label={`Редактирование названия статуса ${s.name}`}
+          aria-label={tp('editStatusNameAria', { name: s.name })}
         />
       ) : (
         <Input
@@ -533,7 +535,7 @@ function StatusSortableRow({
           readOnly
           onFocus={() => onPendingId(s.id)}
           className="h-8 flex-1 border-transparent bg-transparent px-1.5 text-sm hover:border-input focus-visible:border-input"
-          aria-label={`Название статуса ${s.name}`}
+          aria-label={tp('statusNameAria', { name: s.name })}
         />
       )}
 
@@ -547,13 +549,13 @@ function StatusSortableRow({
       )}
 
       <Select value={String(s.category)} onValueChange={(v) => onCommitCategory(s, Number(v))}>
-        <SelectTrigger className="h-8 w-[130px] shrink-0 text-xs" aria-label={`Категория статуса ${s.name}`}>
+        <SelectTrigger className="h-8 w-[130px] shrink-0 text-xs" aria-label={tp('statusCategoryAria', { name: s.name })}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {[0, 1, 2, 3].map((c) => (
             <SelectItem key={c} value={String(c)} className="text-sm">
-              {CATEGORY_LABELS_RU[c]}
+              {categoryLabel(c)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -565,7 +567,7 @@ function StatusSortableRow({
         className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
         onClick={() => onRemove(s)}
         disabled={deletePending || !canDelete}
-        aria-label={`Удалить статус «${s.name}»`}
+        aria-label={tp('deleteStatusAria', { name: s.name })}
         title={deleteTitle}
       >
         <Trash2 className="h-3.5 w-3.5" />
