@@ -2,58 +2,21 @@ import { db } from '@/lib/db'
 import { PROJECT_COLORS } from '@/lib/config'
 import { storeBuffer } from '@/lib/server/storage'
 import { ApiError, isValidProjectKey } from '@/lib/server/validation'
+import { parseProjectExportV1, type ProjectExportV1 } from '@/lib/server/project-export-schema'
 
-export type ProjectExportV1 = {
-  format: string
-  exportedAt?: string
-  project: { key: string; name: string; description?: string; color?: string }
-  statuses: Array<{ name: string; color: string; category: number; order: number }>
-  tasks: Array<{
-    number: number
-    type: string
-    title: string
-    description?: string
-    status: string | null
-    assigneeId?: string | null
-    priority: string
-    dueDate?: string | null
-    labels?: string[]
-    parentNumber?: number | null
-    boardOrder?: string
-    links?: Array<{ type: string; direction: string; toNumber?: number | null; fromNumber?: number | null }>
-    comments?: Array<{ body: string; createdAt?: string }>
-    attachments?: Array<{ fileName: string; size: number; mime: string; bundlePath?: string }>
-  }>
-  graphNodes?: Array<{
-    refType: string
-    taskNumber?: number | null
-    x: number
-    y: number
-    w?: number | null
-    h?: number | null
-    text?: string | null
-    color?: string | null
-    parent?: number | null
-  }>
-  /** Индексы в graphNodes (новый формат) */
-  graphEdges?: Array<{ from: number; to: number; kind?: string }>
-  /** Legacy: cuid нод — игнорируется при импорте */
-  graphEdgesLegacy?: Array<{ fromNodeId: string; toNodeId: string }>
-}
+export type { ProjectExportV1 }
 
 export async function importProjectFromExport(
   userId: string,
-  raw: ProjectExportV1,
+  raw: unknown,
   opts?: { key?: string; bundleFiles?: Map<string, Buffer> }
 ): Promise<{ projectId: string; key: string; tasks: number; graphNodes: number; attachments: number }> {
-  if (raw.format !== 'task-graph-tracker/v1') {
-    throw new ApiError('Неверный формат файла (ожидается task-graph-tracker/v1)')
-  }
+  const data = parseProjectExportV1(raw)
 
-  const name = (raw.project?.name ?? '').trim()
+  const name = (data.project.name ?? '').trim()
   if (!name) throw new ApiError('В файле нет названия проекта')
 
-  let key = (opts?.key ?? raw.project.key ?? '').trim().toUpperCase()
+  let key = (opts?.key ?? data.project.key ?? '').trim().toUpperCase()
   if (!key || !isValidProjectKey(key)) throw new ApiError('Некорректный ключ проекта в файле')
 
   const exists = await db.project.findUnique({ where: { key }, select: { id: true } })
@@ -64,17 +27,17 @@ export async function importProjectFromExport(
   }
 
   const color =
-    raw.project.color && PROJECT_COLORS.includes(raw.project.color) ? raw.project.color : PROJECT_COLORS[0]
+    data.project.color && PROJECT_COLORS.includes(data.project.color) ? data.project.color : PROJECT_COLORS[0]
 
-  const statusesInput = raw.statuses?.length
-    ? raw.statuses
+  const statusesInput = data.statuses?.length
+    ? data.statuses
     : [{ name: 'Бэклог', color: '#94a3b8', category: 0, order: 0 }]
 
   const project = await db.project.create({
     data: {
       key,
       name,
-      description: (raw.project.description ?? '').trim(),
+      description: (data.project.description ?? '').trim(),
       color,
       statuses: {
         create: statusesInput.map((s, i) => ({
@@ -93,14 +56,14 @@ export async function importProjectFromExport(
   const numberToId = new Map<number, string>()
   let attachmentCount = 0
 
-  const assigneeIds = [...new Set((raw.tasks ?? []).map((t) => t.assigneeId).filter(Boolean))] as string[]
+  const assigneeIds = [...new Set((data.tasks ?? []).map((t) => t.assigneeId).filter(Boolean))] as string[]
   const validAssigneeIds = new Set(
     assigneeIds.length
       ? (await db.user.findMany({ where: { id: { in: assigneeIds } }, select: { id: true } })).map((u) => u.id)
       : []
   )
 
-  const tasksSorted = [...(raw.tasks ?? [])].sort((a, b) => a.number - b.number)
+  const tasksSorted = [...(data.tasks ?? [])].sort((a, b) => a.number - b.number)
 
   for (const t of tasksSorted) {
     const statusId = t.status ? statusByName.get(t.status) ?? defaultStatusId : defaultStatusId
@@ -181,7 +144,7 @@ export async function importProjectFromExport(
   const graphNodeIds: string[] = []
   const createdByIndex: (string | undefined)[] = []
   let graphNodeCount = 0
-  const rawNodes = raw.graphNodes ?? []
+  const rawNodes = data.graphNodes ?? []
   for (let i = 0; i < rawNodes.length; i++) {
     const gn = rawNodes[i]
     let refId: string | null = null
@@ -218,7 +181,7 @@ export async function importProjectFromExport(
     await db.graphNode.update({ where: { id }, data: { parentId } }).catch(() => {})
   }
 
-  for (const e of raw.graphEdges ?? []) {
+  for (const e of data.graphEdges ?? []) {
     const fromId = graphNodeIds[e.from]
     const toId = graphNodeIds[e.to]
     if (!fromId || !toId) continue
